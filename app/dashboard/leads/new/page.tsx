@@ -1,25 +1,20 @@
 import { getUserProfile } from '@/lib/getUserProfile';
-import { createLead } from '@/lib/leads';
-import { LeadForm } from '../../../components/leads/LeadForm';
-import { redirect } from 'next/navigation';
+import CreateLeadFormClient from '@/app/components/leads/CreateLeadFormClient';
 
 export default async function NewLeadPage() {
-
   const profile = await getUserProfile();
-  if (!profile) return null;
-
-  async function handleCreateLead(data: any) {
-    if (!profile) return;
-    const { data: lead } = await createLead({ ...data, assigned_user_id: profile.id });
-    if (lead) {
-      redirect(`/dashboard/leads/${lead.id}`);
-    }
+  if (!profile) {
+    return (
+      <div className="p-6">
+        <h1 className="text-xl font-semibold">New Lead</h1>
+        <p className="mt-2 text-sm text-[var(--muted)]">Please log in.</p>
+      </div>
+    );
   }
-
   return (
-    <div>
-      <h1 className="text-xl font-bold mb-4">Create New Lead</h1>
-      <LeadForm onSubmit={handleCreateLead} />
+    <div className="max-w-3xl">
+      <h1 className="text-xl font-semibold mb-4">Create Lead</h1>
+      <CreateLeadFormClient userId={profile.id} />
     </div>
   );
 }

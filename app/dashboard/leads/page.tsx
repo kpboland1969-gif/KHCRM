@@ -1,7 +1,9 @@
 import { getUserProfile } from '@/lib/getUserProfile';
 import { getAssignedLeads } from '@/lib/leads';
 import { LeadTable } from '../../components/leads/LeadTable';
-import FollowUpBadge from '@/app/components/leads/FollowUpBadge';
+import LeadsFiltersClient from '@/app/components/leads/LeadsFiltersClient';
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
 
 export default async function LeadsPage() {
   const profile = await getUserProfile();
@@ -13,10 +15,28 @@ export default async function LeadsPage() {
     if (!b.follow_up_date) return -1;
     return new Date(a.follow_up_date).getTime() - new Date(b.follow_up_date).getTime();
   });
-  return (
-    <div>
-      <h1 className="text-xl font-bold mb-4">Leads</h1>
-      <LeadTable leads={sortedLeads || []} />
-    </div>
-  );
+    return (
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div className="space-y-1">
+            <h1 className="text-2xl font-semibold tracking-tight">Leads</h1>
+            {/* keep any existing subtitle/description if you have it */}
+          </div>
+
+          {/* NEW: Entry point to create a lead */}
+          <Link href="/dashboard/leads/new">
+            <Button type="button">New Lead</Button>
+          </Link>
+        </div>
+
+        {/* ...keep the rest of your existing Leads page UI:
+            - filters/search client component
+            - table
+            - pagination
+        */}
+        <LeadsFiltersClient />
+        <LeadTable leads={sortedLeads || []} />
+      </div>
+    );
 }

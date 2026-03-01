@@ -1,8 +1,9 @@
 import Link from 'next/link';
 import { getFollowUpQueue } from '@/lib/followups';
 import FollowUpBadge from './FollowUpBadge';
+import { UserRole } from '@/lib/getUserProfile';
 
-export default async function FollowUpQueue({ userId, role }: { userId: string; role: string }) {
+export default async function FollowUpQueue({ userId, role }: { userId: string; role: UserRole }) {
   const leads = await getFollowUpQueue(userId, role);
   if (!leads.length) return null;
   return (

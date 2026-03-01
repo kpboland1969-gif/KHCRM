@@ -1,6 +1,7 @@
 import { Card } from '@/lib/ui/Card';
 import { format } from 'date-fns';
 import React from 'react';
+import Link from 'next/link';
 
 export function LeadTable({ leads }: { leads: any[] }) {
   return (
@@ -19,7 +20,11 @@ export function LeadTable({ leads }: { leads: any[] }) {
             const overdue = lead.follow_up_date && new Date(lead.follow_up_date) < new Date();
             return (
               <tr key={lead.id} className={overdue ? 'bg-[#f7b26722]' : ''}>
-                <td className="font-semibold">{lead.company_name}</td>
+                <td className="font-semibold">
+                  <Link href={`/dashboard/leads/${lead.id}`} className="hover:underline text-blue-700">
+                    {lead.company_name}
+                  </Link>
+                </td>
                 <td>{lead.contact_person}</td>
                 <td>{lead.status.replace('_', ' ')}</td>
                 <td>{lead.follow_up_date ? format(new Date(lead.follow_up_date), 'yyyy-MM-dd') : '-'}</td>

@@ -9,13 +9,13 @@ export async function POST(req: NextRequest) {
   if (!profile) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const body = await req.json();
   const { leadId, to, subject, message, documentId } = body;
-  let attachmentUrl, attachmentName;
+  let attachmentUrl: string | undefined, attachmentName: string | undefined;
   if (documentId) {
-    // Fetch document metadata and signed URL
-    // (Assume you have a function to get document by id, or fetch from DB)
-    // For brevity, just use documentId as storage_path
-    attachmentUrl = await getSignedDocumentUrl(documentId, 300);
-    attachmentName = 'attachment';
+    const url = await getSignedDocumentUrl(documentId, 300);
+    if (url) {
+      attachmentUrl = url;
+      attachmentName = 'attachment';
+    }
   }
   const result = await sendEmailSMTP({
     to,

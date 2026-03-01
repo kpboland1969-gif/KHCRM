@@ -66,3 +66,69 @@ export async function updateLeadFollowUp(leadId: string, userId: string, usernam
   }).eq('id', leadId);
   await addFollowUpSetNote(leadId, userId, username, followUpDate);
 }
+
+// PHASE 6: Paginated, filtered, sorted leads list
+export async function listLeadsPaged({
+  userId,
+  role,
+  page = 1,
+  pageSize = 25,
+  sort = 'followup',
+  dir = 'asc',
+  status,
+  industry,
+  dueOnly,
+  q
+}: {
+  userId: string;
+  role: string;
+  page?: number;
+  pageSize?: number;
+  sort?: 'followup' | 'created' | 'company';
+  dir?: 'asc' | 'desc';
+  status?: string;
+  industry?: string;
+  dueOnly?: boolean;
+  q?: string;
+}) {
+  const supabase = await createSupabaseServerClient();
+  let query = supabase.from('leads').select('*', { count: 'exact' });
+  // RLS: admin sees all, user/manager sees assigned
+  if (role !== 'admin') {
+    query = query.eq('assigned_user_id', userId);
+  }
+  if (status && status !== 'all') {
+    query = query.eq('status', status);
+  }
+  if (industry && industry !== 'all') {
+    query = query.eq('industry', industry);
+  }
+  if (dueOnly) {
+    query = query.lte('follow_up_date', new Date().toISOString());
+  }
+  // Search
+  if (q && q.length >= 2) {
+    const pattern = `%${q}%`;
+    query = query.or(`company_name.ilike.${pattern},contact_person.ilike.${pattern},email.ilike.${pattern},phone.ilike.${pattern}`);
+  }
+  // Sorting
+  if (sort === 'followup') {
+    query = query.order('follow_up_date', { ascending: dir === 'asc', nullsFirst: false }).order('id');
+  } else if (sort === 'created') {
+    query = query.order('created_at', { ascending: dir === 'asc' ? true : false }).order('id');
+  } else if (sort === 'company') {
+    query = query.order('company_name', { ascending: dir === 'asc' }).order('id');
+  }
+  // Pagination
+  const safePageSize = Math.max(1, Math.min(pageSize, 100));
+  const safePage = Math.max(1, page);
+  const from = (safePage - 1) * safePageSize;
+  const to = from + safePageSize - 1;
+  query = query.range(from, to);
+  const { data: leads, count: total, error } = await query;
+  if (error) throw new Error(error.message);
+  return {
+    leads: leads ?? [],
+    total: total ?? 0
+  };
+}
