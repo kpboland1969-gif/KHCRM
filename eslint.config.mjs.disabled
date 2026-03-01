@@ -1,0 +1,28 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { FlatCompat } from "@eslint/eslintrc";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const compat = new FlatCompat({
+  baseDirectory: __dirname,
+});
+
+export default [
+  // ✅ Ignore generated + vendor folders
+  {
+    ignores: [
+      "**/node_modules/**",
+      "**/.next/**",
+      "**/dist/**",
+      "**/build/**",
+      "**/coverage/**",
+      "**/tsconfig.tsbuildinfo",
+      "**/supabase/**", // optional: remove if you WANT to lint SQL/js here
+    ],
+  },
+
+  // ✅ Bring in Next's recommended rules
+  ...compat.extends("next/core-web-vitals"),
+];
