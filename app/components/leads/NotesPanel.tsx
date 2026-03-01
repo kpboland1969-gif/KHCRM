@@ -2,7 +2,6 @@ import { Card } from '@/lib/ui/Card';
 import { Button } from '@/lib/ui/Button';
 import { getLeadNotes, addManualNote } from '@/lib/notes';
 import { revalidatePath } from 'next/cache';
-import { redirect } from 'next/navigation';
 import React from 'react';
 
 export default async function NotesPanel({ leadId, userId, username }: { leadId: string; userId: string; username: string }) {

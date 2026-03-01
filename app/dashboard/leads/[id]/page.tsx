@@ -1,7 +1,13 @@
 import { getUserProfile } from '@/lib/getUserProfile';
 import { getLeadById } from '@/lib/leads';
-import { getLeadNotes, addSystemNote } from '@/lib/notes';
+import { addSystemNote } from '@/lib/notes';
 import NotesPanel from '../../../components/leads/NotesPanel';
+import DocumentPicker from '@/app/components/leads/DocumentPicker';
+import EmailComposer from '@/app/components/leads/EmailComposer';
+import { revalidatePath } from 'next/cache';
+import { addDocumentNote } from '@/lib/notes';
+
+
 
 export default async function LeadDetailPage({ params }: { params: { id: string } }) {
   const profile = await getUserProfile();
@@ -11,6 +17,13 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
 
   // Add system note on view
   await addSystemNote(lead.id, profile.id, `Lead accessed by ${profile.username}`);
+
+  async function handleDocumentSelect(doc: any) {
+    'use server';
+    if (!profile) return;
+    await addDocumentNote(lead.id, profile.id, `Document selected: ${doc.filename}`);
+    revalidatePath(`/dashboard/leads/${lead.id}`);
+  }
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -28,6 +41,8 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
         </div>
       </div>
       <div>
+        <DocumentPicker leadId={lead.id} userId={profile.id} onSelect={handleDocumentSelect} />
+        <EmailComposer leadId={lead.id} userId={profile.id} leadEmail={lead.email} onSent={() => {}} />
         <NotesPanel leadId={lead.id} userId={profile.id} username={profile.username} />
       </div>
     </div>

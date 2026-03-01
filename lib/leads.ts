@@ -1,5 +1,6 @@
 import { createSupabaseServerClient } from '@/lib/supabase-server';
 import { UserRole } from '@/lib/getUserProfile';
+import { addTouchNote, addFollowUpSetNote } from './notes';
 
 export async function getDashboardStats(userId: string, role: UserRole) {
   const supabase = await createSupabaseServerClient();
@@ -44,4 +45,24 @@ export async function getLeadById(id: string, userId: string, role: UserRole) {
     query = query.eq('assigned_user_id', userId);
   }
   return query.maybeSingle();
+}
+
+// PHASE 5: Follow-Up Engine
+export async function markLeadTouched(leadId: string, userId: string, username: string) {
+  const supabase = await createSupabaseServerClient();
+  await supabase.from('leads').update({
+    last_touched_at: new Date().toISOString(),
+    last_touched_by: userId,
+    updated_at: new Date().toISOString(),
+  }).eq('id', leadId);
+  await addTouchNote(leadId, userId, username);
+}
+
+export async function updateLeadFollowUp(leadId: string, userId: string, username: string, followUpDate: string) {
+  const supabase = await createSupabaseServerClient();
+  await supabase.from('leads').update({
+    follow_up_date: followUpDate,
+    updated_at: new Date().toISOString(),
+  }).eq('id', leadId);
+  await addFollowUpSetNote(leadId, userId, username, followUpDate);
 }
