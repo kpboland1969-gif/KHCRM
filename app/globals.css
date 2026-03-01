@@ -1,3 +1,24 @@
+@layer components {
+  /* Labels: clearly separate from values */
+  .crm-label {
+    @apply text-sm font-semibold text-white/90 tracking-wide;
+  }
+
+  /* Base editable control (input/textarea/select trigger) */
+  .crm-control {
+    @apply w-full rounded-md border border-white/25 bg-white/10 px-3 py-2 text-sm text-white
+      placeholder:text-white/40 shadow-sm transition
+      hover:border-white/35 hover:bg-white/12
+      focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40
+      focus-visible:border-white/50;
+  }
+
+  /* Disabled/read-only look */
+  .crm-control:disabled,
+  .crm-control[aria-disabled="true"] {
+    @apply opacity-60 cursor-not-allowed;
+  }
+}
 @import "tailwindcss";
 
 :root {
@@ -53,18 +74,6 @@ body {
   color: var(--text);
 }
 
-.crm-shell input,
-.crm-shell select,
-.crm-shell textarea {
-  background: transparent;
-  color: var(--text);
-  border: none;
-  outline: none;
-  width: 100%;
-  padding: 0.5rem 0.75rem;
-  border-radius: var(--radius-ctl);
-  box-shadow: none;
-}
 
 .crm-shell input:focus,
 .crm-shell select:focus,

@@ -11,7 +11,9 @@ export type Props = {
 
 import Link from "next/link";
 
-import { formLabelClass, formHintClass, formFieldClass, formSelectClass } from "@/components/ui/formStyles";
+
+import { Field, ReadOnlyField } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 
 type EditLeadFormState = {
@@ -77,105 +79,94 @@ export default function EditLeadFormClient({ lead }: Props) {
 
   return (
     <form onSubmit={handleSubmit}>
-      <p className={formHintClass + " mb-4"}>
-        Editable fields are shown in highlighted boxes.
-      </p>
-      <div>
-        <label className={formLabelClass}>Company Name</label>
-        <input className={formFieldClass} name="company_name" value={form.company_name} onChange={handleChange} required disabled={saving} />
+      <div className="max-w-3xl space-y-6">
+        <Field label={<span className="text-base font-semibold text-white/90 tracking-wide mb-1">Company Name</span>}>
+          <Input name="company_name" value={form.company_name} onChange={handleChange} required disabled={saving} />
+        </Field>
+        <Field label={<span className="text-base font-semibold text-white/90 tracking-wide mb-1">Contact Person</span>}>
+          <Input name="contact_person" value={form.contact_person} onChange={handleChange} required disabled={saving} />
+        </Field>
+        <Field label={<span className="text-base font-semibold text-white/90 tracking-wide mb-1">Title</span>}>
+          <Input name="title" value={form.title} onChange={handleChange} disabled={saving} />
+        </Field>
+        <Field label={<span className="text-base font-semibold text-white/90 tracking-wide mb-1">Phone</span>}>
+          <Input name="phone" value={form.phone} onChange={handleChange} disabled={saving} />
+        </Field>
+        <Field label={<span className="text-base font-semibold text-white/90 tracking-wide mb-1">Email</span>}>
+          <Input name="email" value={form.email} onChange={handleChange} disabled={saving} />
+        </Field>
+        <Field label={<span className="text-base font-semibold text-white/90 tracking-wide mb-1">Website</span>}>
+          <Input name="website" value={form.website} onChange={handleChange} disabled={saving} />
+        </Field>
+        <Field label={<span className="text-base font-semibold text-white/90 tracking-wide mb-1">Address 1</span>}>
+          <Input name="address1" value={form.address1} onChange={handleChange} disabled={saving} />
+        </Field>
+        <Field label={<span className="text-base font-semibold text-white/90 tracking-wide mb-1">Address 2</span>}>
+          <Input name="address2" value={form.address2} onChange={handleChange} disabled={saving} />
+        </Field>
+        <Field label={<span className="text-base font-semibold text-white/90 tracking-wide mb-1">City</span>}>
+          <Input name="city" value={form.city} onChange={handleChange} disabled={saving} />
+        </Field>
+        <Field label={<span className="text-base font-semibold text-white/90 tracking-wide mb-1">State</span>}>
+          <Input name="state" value={form.state} onChange={handleChange} disabled={saving} />
+        </Field>
+        <Field label={<span className="text-base font-semibold text-white/90 tracking-wide mb-1">Zip</span>}>
+          <Input name="zip" value={form.zip} onChange={handleChange} disabled={saving} />
+        </Field>
+        <Field label={<span className="text-base font-semibold text-white/90 tracking-wide mb-1">Industry</span>}>
+          <Select
+            value={form.industry}
+            onChange={(v) => setForm((f) => ({ ...f, industry: v }))}
+            options={[
+              { value: "", label: "Select industry" },
+              { value: "construction", label: "Construction" },
+              { value: "subcontractor", label: "Subcontractor" },
+              { value: "manufacturing", label: "Manufacturing" },
+              { value: "wholesale", label: "Wholesale" },
+            ]}
+            disabled={saving}
+          />
+        </Field>
+        <Field label={<span className="text-base font-semibold text-white/90 tracking-wide mb-1">Status</span>}>
+          <Select
+            value={form.status}
+            onChange={(v) => setForm((f) => ({ ...f, status: v }))}
+            options={[
+              { value: "", label: "Select status" },
+              { value: "new_lead", label: "New Lead" },
+              { value: "email_campaign", label: "Email Campaign" },
+              { value: "warm_lead", label: "Warm Lead" },
+              { value: "assessment_stage", label: "Assessment Stage" },
+              { value: "onboarding", label: "Onboarding" },
+              { value: "client", label: "Client" },
+            ]}
+            disabled={saving}
+          />
+        </Field>
+        <Field label={<span className="text-base font-semibold text-white/90 tracking-wide mb-1">Follow Up Date</span>}>
+          <Input type="date" name="follow_up_date" value={form.follow_up_date} onChange={handleChange} disabled={saving} />
+        </Field>
+        <ReadOnlyField label="Assigned User" value={lead.assigned_user_id} />
+        <ReadOnlyField label="Created At" value={lead.created_at} />
+        <ReadOnlyField label="Updated At" value={lead.updated_at} />
+        <ReadOnlyField label="Lead ID" value={lead.id} />
+        {error && <div style={{ color: "red" }}>{error}</div>}
+        <div className="flex gap-2 mt-4">
+          <button type="submit" disabled={saving} className="btn btn-primary">Save</button>
+          <Link
+            href={`/dashboard/leads/${lead.id}`}
+            className="inline-flex"
+            aria-disabled={saving}
+            onClick={(e) => {
+              if (saving) e.preventDefault();
+            }}
+          >
+            <button type="button" disabled={saving} style={{ marginLeft: 8 }}>
+              Cancel
+            </button>
+          </Link>
+        </div>
       </div>
-      <div>
-        <label className={formLabelClass}>Contact Person</label>
-        <input className={formFieldClass} name="contact_person" value={form.contact_person} onChange={handleChange} required disabled={saving} />
-      </div>
-      <div>
-        <label className={formLabelClass}>Title</label>
-        <input className={formFieldClass} name="title" value={form.title} onChange={handleChange} disabled={saving} />
-      </div>
-      <div>
-        <label className={formLabelClass}>Phone</label>
-        <input className={formFieldClass} name="phone" value={form.phone} onChange={handleChange} disabled={saving} />
-      </div>
-      <div>
-        <label className={formLabelClass}>Email</label>
-        <input className={formFieldClass} name="email" value={form.email} onChange={handleChange} disabled={saving} />
-      </div>
-      <div>
-        <label className={formLabelClass}>Website</label>
-        <input className={formFieldClass} name="website" value={form.website} onChange={handleChange} disabled={saving} />
-      </div>
-      <div>
-        <label className={formLabelClass}>Address 1</label>
-        <input className={formFieldClass} name="address1" value={form.address1} onChange={handleChange} disabled={saving} />
-      </div>
-      <div>
-        <label className={formLabelClass}>Address 2</label>
-        <input className={formFieldClass} name="address2" value={form.address2} onChange={handleChange} disabled={saving} />
-      </div>
-      <div>
-        <label className={formLabelClass}>City</label>
-        <input className={formFieldClass} name="city" value={form.city} onChange={handleChange} disabled={saving} />
-      </div>
-      <div>
-        <label className={formLabelClass}>State</label>
-        <input className={formFieldClass} name="state" value={form.state} onChange={handleChange} disabled={saving} />
-      </div>
-      <div>
-        <label className={formLabelClass}>Zip</label>
-        <input className={formFieldClass} name="zip" value={form.zip} onChange={handleChange} disabled={saving} />
-      </div>
-      <div>
-        <label className={formLabelClass}>Industry</label>
-        <Select
-          value={form.industry}
-          onChange={(v) => setForm((f) => ({ ...f, industry: v }))}
-          options={[
-            { value: "", label: "Select industry" },
-            { value: "construction", label: "Construction" },
-            { value: "subcontractor", label: "Subcontractor" },
-            { value: "manufacturing", label: "Manufacturing" },
-            { value: "wholesale", label: "Wholesale" },
-          ]}
-          disabled={saving}
-          className={formSelectClass}
-        />
-      </div>
-      <div>
-        <label className={formLabelClass}>Status</label>
-        <Select
-          value={form.status}
-          onChange={(v) => setForm((f) => ({ ...f, status: v }))}
-          options={[
-            { value: "", label: "Select status" },
-            { value: "new_lead", label: "New Lead" },
-            { value: "email_campaign", label: "Email Campaign" },
-            { value: "warm_lead", label: "Warm Lead" },
-            { value: "assessment_stage", label: "Assessment Stage" },
-            { value: "onboarding", label: "Onboarding" },
-            { value: "client", label: "Client" },
-          ]}
-          disabled={saving}
-          className={formSelectClass}
-        />
-      </div>
-      <div>
-        <label className={formLabelClass}>Follow Up Date</label>
-        <input className={formFieldClass} type="date" name="follow_up_date" value={form.follow_up_date} onChange={handleChange} disabled={saving} />
-      </div>
-      {error && <div style={{ color: "red" }}>{error}</div>}
-      <button type="submit" disabled={saving}>Save</button>
-      <Link
-        href={`/dashboard/leads/${lead.id}`}
-        className="inline-flex"
-        aria-disabled={saving}
-        onClick={(e) => {
-          if (saving) e.preventDefault();
-        }}
-      >
-        <button type="button" disabled={saving} style={{ marginLeft: 8 }}>
-          Cancel
-        </button>
-      </Link>
     </form>
   );
 }

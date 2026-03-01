@@ -4,9 +4,10 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card } from '@/lib/ui/Card';
 import { Button } from '@/lib/ui/Button';
-import { Field } from '@/lib/ui/Field';
-import { formLabelClass, formHintClass, formFieldClass, formSelectClass } from '@/components/ui/formStyles';
-import { Select } from '@/components/ui/select';
+
+import { Field } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 
 type Industry = 'construction' | 'subcontractor' | 'manufacturing' | 'wholesale';
 type Status = 'new_lead' | 'email_campaign' | 'warm_lead' | 'assessment_stage' | 'onboarding' | 'client';
@@ -74,63 +75,50 @@ export default function CreateLeadFormClient({ userId }: { userId: string }) {
 
   return (
     <Card className="p-4">
-      <p className={formHintClass + " mb-4"}>Editable fields are shown in highlighted boxes.</p>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <Field label={<span className={formLabelClass}>Company Name *</span>}>
-          <input
-            className={formFieldClass}
+      <p className="mb-4 text-sm text-white/60">Editable fields are shown in highlighted boxes.</p>
+      <div className="max-w-3xl space-y-6">
+        <Field label={<span className="text-sm font-semibold text-white/90 tracking-wide mb-1">Company Name *</span>}>
+          <Input
             value={form.company_name}
             onChange={(e) => setForm({ ...form, company_name: e.target.value })}
             placeholder="Kendrick & Hayes"
           />
         </Field>
-
-        <Field label={<span className={formLabelClass}>Contact Person *</span>}>
-          <input
-            className={formFieldClass}
+        <Field label={<span className="text-sm font-semibold text-white/90 tracking-wide mb-1">Contact Person *</span>}>
+          <Input
             value={form.contact_person}
             onChange={(e) => setForm({ ...form, contact_person: e.target.value })}
             placeholder="Jane Smith"
           />
         </Field>
-
-        <Field label={<span className={formLabelClass}>Title</span>}>
-          <input className={formFieldClass} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
+        <Field label={<span className="text-sm font-semibold text-white/90 tracking-wide mb-1">Title</span>}>
+          <Input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
         </Field>
-
-        <Field label={<span className={formLabelClass}>Phone</span>}>
-          <input className={formFieldClass} value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+        <Field label={<span className="text-sm font-semibold text-white/90 tracking-wide mb-1">Phone</span>}>
+          <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
         </Field>
-
-        <Field label={<span className={formLabelClass}>Email</span>}>
-          <input className={formFieldClass} value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+        <Field label={<span className="text-sm font-semibold text-white/90 tracking-wide mb-1">Email</span>}>
+          <Input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
         </Field>
-
-        <Field label={<span className={formLabelClass}>Website</span>}>
-          <input className={formFieldClass} value={form.website} onChange={(e) => setForm({ ...form, website: e.target.value })} />
+        <Field label={<span className="text-sm font-semibold text-white/90 tracking-wide mb-1">Website</span>}>
+          <Input value={form.website} onChange={(e) => setForm({ ...form, website: e.target.value })} />
         </Field>
-
-        <Field label={<span className={formLabelClass}>Address 1</span>}>
-          <input className={formFieldClass} value={form.address1} onChange={(e) => setForm({ ...form, address1: e.target.value })} />
+        <Field label={<span className="text-sm font-semibold text-white/90 tracking-wide mb-1">Address 1</span>}>
+          <Input value={form.address1} onChange={(e) => setForm({ ...form, address1: e.target.value })} />
         </Field>
-
-        <Field label={<span className={formLabelClass}>Address 2</span>}>
-          <input className={formFieldClass} value={form.address2} onChange={(e) => setForm({ ...form, address2: e.target.value })} />
+        <Field label={<span className="text-sm font-semibold text-white/90 tracking-wide mb-1">Address 2</span>}>
+          <Input value={form.address2} onChange={(e) => setForm({ ...form, address2: e.target.value })} />
         </Field>
-
-        <Field label={<span className={formLabelClass}>City</span>}>
-          <input className={formFieldClass} value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} />
+        <Field label={<span className="text-sm font-semibold text-white/90 tracking-wide mb-1">City</span>}>
+          <Input value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} />
         </Field>
-
-        <Field label={<span className={formLabelClass}>State</span>}>
-          <input className={formFieldClass} value={form.state} onChange={(e) => setForm({ ...form, state: e.target.value })} />
+        <Field label={<span className="text-sm font-semibold text-white/90 tracking-wide mb-1">State</span>}>
+          <Input value={form.state} onChange={(e) => setForm({ ...form, state: e.target.value })} />
         </Field>
-
-        <Field label={<span className={formLabelClass}>Zip</span>}>
-          <input className={formFieldClass} value={form.zip} onChange={(e) => setForm({ ...form, zip: e.target.value })} />
+        <Field label={<span className="text-sm font-semibold text-white/90 tracking-wide mb-1">Zip</span>}>
+          <Input value={form.zip} onChange={(e) => setForm({ ...form, zip: e.target.value })} />
         </Field>
-
-        <Field label={<span className={formLabelClass}>Industry</span>}>
+        <Field label={<span className="text-sm font-semibold text-white/90 tracking-wide mb-1">Industry</span>}>
           <Select
             value={form.industry}
             onChange={(v: string) => setForm({ ...form, industry: v as Industry })}
@@ -140,11 +128,9 @@ export default function CreateLeadFormClient({ userId }: { userId: string }) {
               { value: "manufacturing", label: "Manufacturing" },
               { value: "wholesale", label: "Wholesale" },
             ]}
-            className={formSelectClass}
           />
         </Field>
-
-        <Field label={<span className={formLabelClass}>Status</span>}>
+        <Field label={<span className="text-sm font-semibold text-white/90 tracking-wide mb-1">Status</span>}>
           <Select
             value={form.status}
             onChange={(v: string) => setForm({ ...form, status: v as Status })}
@@ -156,13 +142,10 @@ export default function CreateLeadFormClient({ userId }: { userId: string }) {
               { value: "onboarding", label: "Onboarding" },
               { value: "client", label: "Client" },
             ]}
-            className={formSelectClass}
           />
         </Field>
-
-        <Field label={<span className={formLabelClass}>Follow-up Date</span>}>
-          <input
-            className={formFieldClass}
+        <Field label={<span className="text-sm font-semibold text-white/90 tracking-wide mb-1">Follow-up Date</span>}>
+          <Input
             type="datetime-local"
             value={form.follow_up_date}
             onChange={(e) => setForm({ ...form, follow_up_date: e.target.value })}

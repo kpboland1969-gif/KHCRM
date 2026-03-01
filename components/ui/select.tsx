@@ -174,12 +174,7 @@ export function Select({
   }, [open, highlightedIndex, options, onChange]);
 
   const triggerClasses = clsx(
-    "mt-2 w-full rounded-md border border-white/25 bg-white/10 px-3 py-2 text-left text-sm text-white",
-    "shadow-sm transition",
-    "hover:border-white/35 hover:bg-white/12",
-    "focus:outline-none focus:ring-2 focus:ring-white/40 focus:border-white/50",
-    "flex items-center justify-between gap-3 cursor-pointer",
-    disabled && "opacity-50 pointer-events-none",
+    'flex h-10 w-full rounded-md border border-white/25 px-3 py-2 text-sm text-white shadow-sm transition hover:border-white/35 hover:bg-white/12 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 focus-visible:border-white/50 disabled:cursor-not-allowed disabled:opacity-50 flex items-center justify-between gap-3 cursor-pointer bg-white/10',
     className
   );
 
