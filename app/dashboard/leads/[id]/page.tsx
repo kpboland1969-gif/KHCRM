@@ -1,54 +1,187 @@
-import { notFound } from 'next/navigation';
-import Link from 'next/link';
-import { getLeadById } from '@/lib/server/leads/getLeadById';
-import { LeadRow } from '@/types/leads';
 
-export default async function LeadDetailPage({ params }: { params: { id: string } }) {
-  const lead = await getLeadById(params.id);
-  if (!lead) return notFound();
+import { notFound } from "next/navigation";
+import Link from "next/link";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { Button } from "@/components/ui/button";
+
+export const dynamic = "force-dynamic";
+
+type PageProps = {
+  params: Promise<{ id: string }>;
+};
+
+function isUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+function formatDateTime(value: string | null) {
+  if (!value) return "—";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+  return d.toLocaleString();
+}
+
+function formatValue(value: string | null) {
+  return value && value.trim().length > 0 ? value : "—";
+}
+
+export default async function LeadDetailPage({ params }: PageProps) {
+  const { id: leadId } = await params;
+  if (!isUuid(leadId)) notFound();
+
+  const supabase = await createSupabaseServerClient();
+
+  const { data, error } = await supabase
+    .from("leads")
+    .select(`
+      id,
+      assigned_user_id,
+      company_name,
+      contact_person,
+      title,
+      phone,
+      email,
+      website,
+      address1,
+      address2,
+      city,
+      state,
+      zip,
+      industry,
+      status,
+      follow_up_date,
+      created_at,
+      updated_at,
+      assigned_user:profiles!leads_assigned_user_id_fkey (
+        id,
+        full_name,
+        username
+      )
+    `)
+    .eq("id", leadId)
+    .maybeSingle();
+
+  if (error) {
+    console.error("Lead detail fetch error:", { leadId, error });
+    throw new Error(error.message);
+  }
+
+  if (!data) notFound();
+
+  const lead = data;
+  // assigned_user is an object: { id, full_name }
+  // assigned_user is an object: { id, full_name }
+  const assignedUserRow = Array.isArray(lead.assigned_user)
+    ? lead.assigned_user[0]
+    : lead.assigned_user;
+  const assignedUser =
+    assignedUserRow?.full_name ?? assignedUserRow?.username ?? "—";
 
   return (
-    <div className="max-w-4xl mx-auto p-6 space-y-6">
+    <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold mb-1">{lead.company_name}</h1>
-          <span className="inline-block px-2 py-1 text-xs rounded bg-gray-100 text-gray-700">
-            {lead.status.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
-          </span>
+      <div className="flex items-start justify-between gap-3">
+        <div className="space-y-1">
+          <h1 className="text-2xl font-semibold tracking-tight">
+            {formatValue(lead.company_name)}
+          </h1>
+          <div className="text-sm opacity-70">
+            {lead.status ? `Status: ${lead.status}` : "Lead details"}
+          </div>
         </div>
-        <div className="flex gap-2">
-          <Link href="/dashboard/leads" className="underline text-sm">Back to Leads</Link>
-          <Link href={`/dashboard/leads/${lead.id}/edit`} className="underline text-sm">Edit</Link>
-          {/* Add Follow-up button (Phase 7.5) */}
+
+        <div className="flex items-center gap-2">
+          <Button asChild variant="secondary">
+            <Link href="/dashboard/leads">Back</Link>
+          </Button>
+          <Button asChild>
+            <Link href={`/dashboard/leads/${leadId}/edit`}>Edit</Link>
+          </Button>
         </div>
       </div>
 
-      {/* Two-column grid for details */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-white rounded shadow p-6">
-        <div>
-          <div className="mb-2"><span className="font-semibold">Contact:</span> {lead.contact_person}</div>
-          {lead.title && <div className="mb-2"><span className="font-semibold">Title:</span> {lead.title}</div>}
-          {lead.phone && <div className="mb-2"><span className="font-semibold">Phone:</span> {lead.phone}</div>}
-          {lead.email && <div className="mb-2"><span className="font-semibold">Email:</span> {lead.email}</div>}
-          {lead.website && <div className="mb-2"><span className="font-semibold">Website:</span> {lead.website}</div>}
+      {/* Content */}
+      <div className="grid gap-4 lg:grid-cols-2">
+        {/* Contact */}
+        <div className="rounded-lg border p-4">
+          <div className="text-sm font-medium">Contact</div>
+          <dl className="mt-3 space-y-2 text-sm">
+            <div className="flex justify-between gap-4">
+              <dt className="opacity-70">Name</dt>
+              <dd className="text-right">{formatValue(lead.contact_person)}</dd>
+            </div>
+            <div className="flex justify-between gap-4">
+              <dt className="opacity-70">Title</dt>
+              <dd className="text-right">{formatValue(lead.title)}</dd>
+            </div>
+            <div className="flex justify-between gap-4">
+              <dt className="opacity-70">Phone</dt>
+              <dd className="text-right">{formatValue(lead.phone)}</dd>
+            </div>
+            <div className="flex justify-between gap-4">
+              <dt className="opacity-70">Email</dt>
+              <dd className="text-right">{formatValue(lead.email)}</dd>
+            </div>
+            <div className="flex justify-between gap-4">
+              <dt className="opacity-70">Website</dt>
+              <dd className="text-right">{formatValue(lead.website)}</dd>
+            </div>
+          </dl>
         </div>
-        <div>
-          {lead.address1 && <div className="mb-2"><span className="font-semibold">Address 1:</span> {lead.address1}</div>}
-          {lead.address2 && <div className="mb-2"><span className="font-semibold">Address 2:</span> {lead.address2}</div>}
-          {lead.city && <div className="mb-2"><span className="font-semibold">City:</span> {lead.city}</div>}
-          {lead.state && <div className="mb-2"><span className="font-semibold">State:</span> {lead.state}</div>}
-          {lead.zip && <div className="mb-2"><span className="font-semibold">Zip:</span> {lead.zip}</div>}
-          <div className="mb-2"><span className="font-semibold">Industry:</span> {lead.industry}</div>
-        </div>
-      </div>
 
-      {/* Activity summary */}
-      <div className="mt-6">
-        <h2 className="text-lg font-semibold mb-2">Activity</h2>
-        <div className="mb-1"><span className="font-semibold">Last touched:</span> {lead.last_touched_at ? new Date(lead.last_touched_at).toLocaleString() : 'Never'}</div>
-        <div className="mb-1"><span className="font-semibold">Next follow-up:</span> {lead.follow_up_date ? new Date(lead.follow_up_date).toLocaleString() : 'None'}</div>
-        <div className="mb-1"><span className="font-semibold">Created at:</span> {new Date(lead.created_at).toLocaleString()}</div>
+        {/* Status / Follow-up */}
+        <div className="rounded-lg border p-4">
+          <div className="text-sm font-medium">Status</div>
+          <dl className="mt-3 space-y-2 text-sm">
+            <div className="flex justify-between gap-4">
+              <dt className="opacity-70">Status</dt>
+              <dd className="text-right">{formatValue(lead.status)}</dd>
+            </div>
+            <div className="flex justify-between gap-4">
+              <dt className="opacity-70">Industry</dt>
+              <dd className="text-right">{formatValue(lead.industry)}</dd>
+            </div>
+            <div className="flex justify-between gap-4">
+              <dt className="opacity-70">Follow-up</dt>
+              <dd className="text-right">{formatDateTime(lead.follow_up_date)}</dd>
+            </div>
+            <div className="flex justify-between gap-4">
+              <dt className="opacity-70">Assigned User</dt>
+              <dd className="text-right">{assignedUser}</dd>
+            </div>
+          </dl>
+        </div>
+
+        {/* Address */}
+        <div className="rounded-lg border p-4 lg:col-span-2">
+          <div className="text-sm font-medium">Address</div>
+          <div className="mt-3 text-sm space-y-1">
+            <div>{formatValue(lead.address1)}</div>
+            <div>{formatValue(lead.address2)}</div>
+            <div>
+              {formatValue(lead.city)}, {formatValue(lead.state)} {formatValue(lead.zip)}
+            </div>
+          </div>
+        </div>
+
+        {/* Metadata */}
+        <div className="rounded-lg border p-4 lg:col-span-2">
+          <div className="text-sm font-medium">Metadata</div>
+          <dl className="mt-3 space-y-2 text-sm">
+            <div className="flex justify-between gap-4">
+              <dt className="opacity-70">Created</dt>
+              <dd className="text-right">{formatDateTime(lead.created_at ?? null)}</dd>
+            </div>
+            <div className="flex justify-between gap-4">
+              <dt className="opacity-70">Updated</dt>
+              <dd className="text-right">{formatDateTime(lead.updated_at ?? null)}</dd>
+            </div>
+            <div className="flex justify-between gap-4">
+              <dt className="opacity-70">Lead ID</dt>
+              <dd className="text-right break-all">{lead.id}</dd>
+            </div>
+          </dl>
+        </div>
       </div>
     </div>
   );

@@ -1,6 +1,8 @@
 "use client";
 import { useEffect, useState, useRef } from 'react';
 import PaginationControls from './PaginationControls';
+import { formFieldClass, formSelectClass, formLabelClass } from "@/components/ui/formStyles";
+import { Select } from "@/components/ui/select";
 import { LeadTable } from './LeadTable';
 
 const defaultPageSize = 25;
@@ -63,33 +65,35 @@ export default function LeadsFiltersClient({ initialState }: { initialState?: an
     <div>
       <div className="flex flex-wrap gap-2 mb-4 items-end">
         <input
-          className="border rounded px-2 py-1 text-sm"
+          className={formFieldClass}
           placeholder="Search..."
           value={q}
           onChange={e => { setQ(e.target.value); setPage(1); }}
         />
-        <select
-          className="border rounded px-2 py-1"
+        <Select
           value={status}
-          onChange={e => { setStatus(e.target.value); setPage(1); }}
-        >
-          <option value="all">All Statuses</option>
-          <option value="new">New</option>
-          <option value="warm_lead">Warm Lead</option>
-          <option value="client">Client</option>
-          <option value="lost">Lost</option>
-        </select>
-        <select
-          className="border rounded px-2 py-1"
+          onChange={(v: string) => { setStatus(v); setPage(1); }}
+          options={[
+            { value: "all", label: "All Statuses" },
+            { value: "new", label: "New" },
+            { value: "warm_lead", label: "Warm Lead" },
+            { value: "client", label: "Client" },
+            { value: "lost", label: "Lost" },
+          ]}
+          className={formSelectClass}
+        />
+        <Select
           value={industry}
-          onChange={e => { setIndustry(e.target.value); setPage(1); }}
-        >
-          <option value="all">All Industries</option>
-          <option value="tech">Tech</option>
-          <option value="finance">Finance</option>
-          <option value="health">Health</option>
-          <option value="other">Other</option>
-        </select>
+          onChange={(v: string) => { setIndustry(v); setPage(1); }}
+          options={[
+            { value: "all", label: "All Industries" },
+            { value: "tech", label: "Tech" },
+            { value: "finance", label: "Finance" },
+            { value: "health", label: "Health" },
+            { value: "other", label: "Other" },
+          ]}
+          className={formSelectClass}
+        />
         <label className="flex items-center gap-1 text-sm">
           <input
             type="checkbox"
@@ -98,15 +102,16 @@ export default function LeadsFiltersClient({ initialState }: { initialState?: an
           />
           Follow-ups due only
         </label>
-        <select
-          className="border rounded px-2 py-1"
+        <Select
           value={sort}
-          onChange={e => { setSort(e.target.value); setPage(1); }}
-        >
-          <option value="followup">Sort: Follow-Up Date</option>
-          <option value="created">Sort: Created</option>
-          <option value="company">Sort: Company Name</option>
-        </select>
+          onChange={(v: string) => { setSort(v); setPage(1); }}
+          options={[
+            { value: "followup", label: "Sort: Follow-Up Date" },
+            { value: "created", label: "Sort: Created" },
+            { value: "company", label: "Sort: Company Name" },
+          ]}
+          className={formSelectClass}
+        />
         <select
           className="border rounded px-2 py-1"
           value={dir}

@@ -1,14 +1,18 @@
 "use client";
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Card } from '@/lib/ui/Card';
 import { Button } from '@/lib/ui/Button';
 import { Field } from '@/lib/ui/Field';
+import { formLabelClass, formHintClass, formFieldClass, formSelectClass } from '@/components/ui/formStyles';
+import { Select } from '@/components/ui/select';
 
 type Industry = 'construction' | 'subcontractor' | 'manufacturing' | 'wholesale';
 type Status = 'new_lead' | 'email_campaign' | 'warm_lead' | 'assessment_stage' | 'onboarding' | 'client';
 
 export default function CreateLeadFormClient({ userId }: { userId: string }) {
+  const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
@@ -55,24 +59,12 @@ export default function CreateLeadFormClient({ userId }: { userId: string }) {
       const data = await res.json();
       if (!data?.ok) throw new Error(data?.error || 'Failed to create lead.');
 
-      setOk('Lead created.');
-      setForm((prev) => ({
-        ...prev,
-        company_name: '',
-        contact_person: '',
-        title: '',
-        phone: '',
-        email: '',
-        website: '',
-        address1: '',
-        address2: '',
-        city: '',
-        state: '',
-        zip: '',
-        industry: 'construction',
-        status: 'new_lead',
-        follow_up_date: ''
-      }));
+      // Redirect to the new lead's detail page
+      if (data?.id) {
+        router.push(`/dashboard/leads/${data.id}`);
+      } else {
+        setOk('Lead created, but no ID returned.');
+      }
     } catch (e: any) {
       setError(e?.message || 'Failed to create lead.');
     } finally {
@@ -82,87 +74,95 @@ export default function CreateLeadFormClient({ userId }: { userId: string }) {
 
   return (
     <Card className="p-4">
+      <p className={formHintClass + " mb-4"}>Editable fields are shown in highlighted boxes.</p>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <Field label="Company Name *">
+        <Field label={<span className={formLabelClass}>Company Name *</span>}>
           <input
+            className={formFieldClass}
             value={form.company_name}
             onChange={(e) => setForm({ ...form, company_name: e.target.value })}
             placeholder="Kendrick & Hayes"
           />
         </Field>
 
-        <Field label="Contact Person *">
+        <Field label={<span className={formLabelClass}>Contact Person *</span>}>
           <input
+            className={formFieldClass}
             value={form.contact_person}
             onChange={(e) => setForm({ ...form, contact_person: e.target.value })}
             placeholder="Jane Smith"
           />
         </Field>
 
-        <Field label="Title">
-          <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
+        <Field label={<span className={formLabelClass}>Title</span>}>
+          <input className={formFieldClass} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
         </Field>
 
-        <Field label="Phone">
-          <input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+        <Field label={<span className={formLabelClass}>Phone</span>}>
+          <input className={formFieldClass} value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
         </Field>
 
-        <Field label="Email">
-          <input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+        <Field label={<span className={formLabelClass}>Email</span>}>
+          <input className={formFieldClass} value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
         </Field>
 
-        <Field label="Website">
-          <input value={form.website} onChange={(e) => setForm({ ...form, website: e.target.value })} />
+        <Field label={<span className={formLabelClass}>Website</span>}>
+          <input className={formFieldClass} value={form.website} onChange={(e) => setForm({ ...form, website: e.target.value })} />
         </Field>
 
-        <Field label="Address 1">
-          <input value={form.address1} onChange={(e) => setForm({ ...form, address1: e.target.value })} />
+        <Field label={<span className={formLabelClass}>Address 1</span>}>
+          <input className={formFieldClass} value={form.address1} onChange={(e) => setForm({ ...form, address1: e.target.value })} />
         </Field>
 
-        <Field label="Address 2">
-          <input value={form.address2} onChange={(e) => setForm({ ...form, address2: e.target.value })} />
+        <Field label={<span className={formLabelClass}>Address 2</span>}>
+          <input className={formFieldClass} value={form.address2} onChange={(e) => setForm({ ...form, address2: e.target.value })} />
         </Field>
 
-        <Field label="City">
-          <input value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} />
+        <Field label={<span className={formLabelClass}>City</span>}>
+          <input className={formFieldClass} value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} />
         </Field>
 
-        <Field label="State">
-          <input value={form.state} onChange={(e) => setForm({ ...form, state: e.target.value })} />
+        <Field label={<span className={formLabelClass}>State</span>}>
+          <input className={formFieldClass} value={form.state} onChange={(e) => setForm({ ...form, state: e.target.value })} />
         </Field>
 
-        <Field label="Zip">
-          <input value={form.zip} onChange={(e) => setForm({ ...form, zip: e.target.value })} />
+        <Field label={<span className={formLabelClass}>Zip</span>}>
+          <input className={formFieldClass} value={form.zip} onChange={(e) => setForm({ ...form, zip: e.target.value })} />
         </Field>
 
-        <Field label="Industry">
-          <select
+        <Field label={<span className={formLabelClass}>Industry</span>}>
+          <Select
             value={form.industry}
-            onChange={(e) => setForm({ ...form, industry: e.target.value as Industry })}
-          >
-            <option value="construction">Construction</option>
-            <option value="subcontractor">Subcontractor</option>
-            <option value="manufacturing">Manufacturing</option>
-            <option value="wholesale">Wholesale</option>
-          </select>
+            onChange={(v: string) => setForm({ ...form, industry: v as Industry })}
+            options={[
+              { value: "construction", label: "Construction" },
+              { value: "subcontractor", label: "Subcontractor" },
+              { value: "manufacturing", label: "Manufacturing" },
+              { value: "wholesale", label: "Wholesale" },
+            ]}
+            className={formSelectClass}
+          />
         </Field>
 
-        <Field label="Status">
-          <select
+        <Field label={<span className={formLabelClass}>Status</span>}>
+          <Select
             value={form.status}
-            onChange={(e) => setForm({ ...form, status: e.target.value as Status })}
-          >
-            <option value="new_lead">New Lead</option>
-            <option value="email_campaign">Email Campaign</option>
-            <option value="warm_lead">Warm Lead</option>
-            <option value="assessment_stage">Assessment Stage</option>
-            <option value="onboarding">Onboarding</option>
-            <option value="client">Client</option>
-          </select>
+            onChange={(v: string) => setForm({ ...form, status: v as Status })}
+            options={[
+              { value: "new_lead", label: "New Lead" },
+              { value: "email_campaign", label: "Email Campaign" },
+              { value: "warm_lead", label: "Warm Lead" },
+              { value: "assessment_stage", label: "Assessment Stage" },
+              { value: "onboarding", label: "Onboarding" },
+              { value: "client", label: "Client" },
+            ]}
+            className={formSelectClass}
+          />
         </Field>
 
-        <Field label="Follow-up Date">
+        <Field label={<span className={formLabelClass}>Follow-up Date</span>}>
           <input
+            className={formFieldClass}
             type="datetime-local"
             value={form.follow_up_date}
             onChange={(e) => setForm({ ...form, follow_up_date: e.target.value })}

@@ -1,65 +1,76 @@
-import { forwardRef, isValidElement, cloneElement } from "react";
-import type {
-  ButtonHTMLAttributes,
-  AnchorHTMLAttributes,
-  ReactElement,
-} from "react";
 
-type Variant = "primary" | "secondary";
+import React, {
+  forwardRef,
+  isValidElement,
+  cloneElement,
+  type ReactElement,
+  type ButtonHTMLAttributes,
+} from "react";
+import clsx from "clsx";
 
 /**
- * ButtonProps supports two modes:
- * 1) Normal: renders a <button>
- * 2) asChild: clones its only child (e.g. <Link /> or <a />) and injects button styles
- *
- * This avoids invalid nesting like <a><button/></a> or <button><a/></button>
- * and keeps navigation accessible and reliable.
+ * Only allow elements that accept className.
  */
-type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: Variant;
-  asChild?: boolean;
+
+type AsChildElement = ReactElement<React.HTMLAttributes<HTMLElement>>;
+
+type BaseProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, "children"> & {
+  variant?: "primary" | "secondary";
 };
 
-function getButtonClassName(variant: Variant, className?: string) {
-  const baseStyles =
-    "inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium transition-colors " +
-    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 " +
-    "disabled:opacity-50 disabled:pointer-events-none";
+/**
+ * Discriminated union:
+ * - If asChild = true → children must support className
+ * - Otherwise → normal button children
+ */
+type ButtonAsChildProps = BaseProps & {
+  asChild: true;
+  children: AsChildElement;
+};
 
-  const variantStyles =
-    variant === "primary"
-      ? "bg-black text-white hover:bg-black/90"
-      : "bg-gray-100 text-gray-900 hover:bg-gray-200";
+type ButtonNormalProps = BaseProps & {
+  asChild?: false;
+  children?: React.ReactNode;
+};
 
-  return `${baseStyles} ${variantStyles}${className ? ` ${className}` : ""}`;
-}
+type ButtonProps = ButtonAsChildProps | ButtonNormalProps;
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant = "primary", asChild = false, ...props }, ref) => {
-    const computed = getButtonClassName(variant, className);
+  (
+    { className, variant = "primary", asChild = false, disabled, ...props },
+    ref
+  ) => {
+    const classes = clsx(
+      "inline-flex items-center justify-center rounded-md px-3 py-2 text-sm font-medium transition",
+      variant === "primary" && "bg-black text-white",
+      variant === "secondary" && "bg-white text-black",
+      disabled && "opacity-50 pointer-events-none",
+      className
+    );
+
 
     if (asChild) {
-      const child = props.children as ReactElement | undefined;
+      const child = props.children;
 
-      if (!child || !isValidElement(child)) {
-        throw new Error("Button with asChild expects a single valid React element child.");
+      if (isValidElement(child)) {
+        const typedChild = child as AsChildElement;
+        return cloneElement(typedChild, {
+          className: clsx(typedChild.props.className, classes),
+          "aria-disabled": disabled ? true : undefined,
+        });
       }
 
-      // Remove button-only props that shouldn't go onto <a> / <Link>
-      // (Next's <Link> ultimately renders an <a>)
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const { type, onClick, children, ...rest } = props;
-
-      const childProps: AnchorHTMLAttributes<HTMLAnchorElement> = {
-        ...rest,
-        className: computed,
-        "aria-disabled": props.disabled ? true : undefined,
-      };
-
-      return cloneElement(child, childProps);
+      return null;
     }
 
-    return <button ref={ref} className={computed} {...props} />;
+    return (
+      <button
+        ref={ref}
+        className={classes}
+        disabled={disabled}
+        {...props}
+      />
+    );
   }
 );
 
