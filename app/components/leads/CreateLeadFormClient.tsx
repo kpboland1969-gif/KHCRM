@@ -77,48 +77,48 @@ export default function CreateLeadFormClient({ userId }: { userId: string }) {
     <Card className="p-4">
       <p className="mb-4 text-sm text-white/60">Editable fields are shown in highlighted boxes.</p>
       <div className="max-w-3xl space-y-6">
-        <Field label={<span className="text-sm font-semibold text-white/90 tracking-wide mb-1">Company Name *</span>}>
+        <Field label="Company Name *">
           <Input
             value={form.company_name}
             onChange={(e) => setForm({ ...form, company_name: e.target.value })}
             placeholder="Kendrick & Hayes"
           />
         </Field>
-        <Field label={<span className="text-sm font-semibold text-white/90 tracking-wide mb-1">Contact Person *</span>}>
+        <Field label="Contact Person *">
           <Input
             value={form.contact_person}
             onChange={(e) => setForm({ ...form, contact_person: e.target.value })}
             placeholder="Jane Smith"
           />
         </Field>
-        <Field label={<span className="text-sm font-semibold text-white/90 tracking-wide mb-1">Title</span>}>
+        <Field label="Title">
           <Input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
         </Field>
-        <Field label={<span className="text-sm font-semibold text-white/90 tracking-wide mb-1">Phone</span>}>
+        <Field label="Phone">
           <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
         </Field>
-        <Field label={<span className="text-sm font-semibold text-white/90 tracking-wide mb-1">Email</span>}>
+        <Field label="Email">
           <Input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
         </Field>
-        <Field label={<span className="text-sm font-semibold text-white/90 tracking-wide mb-1">Website</span>}>
+        <Field label="Website">
           <Input value={form.website} onChange={(e) => setForm({ ...form, website: e.target.value })} />
         </Field>
-        <Field label={<span className="text-sm font-semibold text-white/90 tracking-wide mb-1">Address 1</span>}>
+        <Field label="Address 1">
           <Input value={form.address1} onChange={(e) => setForm({ ...form, address1: e.target.value })} />
         </Field>
-        <Field label={<span className="text-sm font-semibold text-white/90 tracking-wide mb-1">Address 2</span>}>
+        <Field label="Address 2">
           <Input value={form.address2} onChange={(e) => setForm({ ...form, address2: e.target.value })} />
         </Field>
-        <Field label={<span className="text-sm font-semibold text-white/90 tracking-wide mb-1">City</span>}>
+        <Field label="City">
           <Input value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} />
         </Field>
-        <Field label={<span className="text-sm font-semibold text-white/90 tracking-wide mb-1">State</span>}>
+        <Field label="State">
           <Input value={form.state} onChange={(e) => setForm({ ...form, state: e.target.value })} />
         </Field>
-        <Field label={<span className="text-sm font-semibold text-white/90 tracking-wide mb-1">Zip</span>}>
+        <Field label="Zip">
           <Input value={form.zip} onChange={(e) => setForm({ ...form, zip: e.target.value })} />
         </Field>
-        <Field label={<span className="text-sm font-semibold text-white/90 tracking-wide mb-1">Industry</span>}>
+        <Field label="Industry">
           <Select
             value={form.industry}
             onChange={(v: string) => setForm({ ...form, industry: v as Industry })}
@@ -130,7 +130,7 @@ export default function CreateLeadFormClient({ userId }: { userId: string }) {
             ]}
           />
         </Field>
-        <Field label={<span className="text-sm font-semibold text-white/90 tracking-wide mb-1">Status</span>}>
+        <Field label="Status">
           <Select
             value={form.status}
             onChange={(v: string) => setForm({ ...form, status: v as Status })}
@@ -144,7 +144,7 @@ export default function CreateLeadFormClient({ userId }: { userId: string }) {
             ]}
           />
         </Field>
-        <Field label={<span className="text-sm font-semibold text-white/90 tracking-wide mb-1">Follow-up Date</span>}>
+        <Field label="Follow-up Date">
           <Input
             type="datetime-local"
             value={form.follow_up_date}

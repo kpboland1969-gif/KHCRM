@@ -80,40 +80,40 @@ export default function EditLeadFormClient({ lead }: Props) {
   return (
     <form onSubmit={handleSubmit}>
       <div className="max-w-3xl space-y-6">
-        <Field label={<span className="text-base font-semibold text-white/90 tracking-wide mb-1">Company Name</span>}>
+        <Field label="Company Name">
           <Input name="company_name" value={form.company_name} onChange={handleChange} required disabled={saving} />
         </Field>
-        <Field label={<span className="text-base font-semibold text-white/90 tracking-wide mb-1">Contact Person</span>}>
+        <Field label="Contact Person">
           <Input name="contact_person" value={form.contact_person} onChange={handleChange} required disabled={saving} />
         </Field>
-        <Field label={<span className="text-base font-semibold text-white/90 tracking-wide mb-1">Title</span>}>
+        <Field label="Title">
           <Input name="title" value={form.title} onChange={handleChange} disabled={saving} />
         </Field>
-        <Field label={<span className="text-base font-semibold text-white/90 tracking-wide mb-1">Phone</span>}>
+        <Field label="Phone">
           <Input name="phone" value={form.phone} onChange={handleChange} disabled={saving} />
         </Field>
-        <Field label={<span className="text-base font-semibold text-white/90 tracking-wide mb-1">Email</span>}>
+        <Field label="Email">
           <Input name="email" value={form.email} onChange={handleChange} disabled={saving} />
         </Field>
-        <Field label={<span className="text-base font-semibold text-white/90 tracking-wide mb-1">Website</span>}>
+        <Field label="Website">
           <Input name="website" value={form.website} onChange={handleChange} disabled={saving} />
         </Field>
-        <Field label={<span className="text-base font-semibold text-white/90 tracking-wide mb-1">Address 1</span>}>
+        <Field label="Address 1">
           <Input name="address1" value={form.address1} onChange={handleChange} disabled={saving} />
         </Field>
-        <Field label={<span className="text-base font-semibold text-white/90 tracking-wide mb-1">Address 2</span>}>
+        <Field label="Address 2">
           <Input name="address2" value={form.address2} onChange={handleChange} disabled={saving} />
         </Field>
-        <Field label={<span className="text-base font-semibold text-white/90 tracking-wide mb-1">City</span>}>
+        <Field label="City">
           <Input name="city" value={form.city} onChange={handleChange} disabled={saving} />
         </Field>
-        <Field label={<span className="text-base font-semibold text-white/90 tracking-wide mb-1">State</span>}>
+        <Field label="State">
           <Input name="state" value={form.state} onChange={handleChange} disabled={saving} />
         </Field>
-        <Field label={<span className="text-base font-semibold text-white/90 tracking-wide mb-1">Zip</span>}>
+        <Field label="Zip">
           <Input name="zip" value={form.zip} onChange={handleChange} disabled={saving} />
         </Field>
-        <Field label={<span className="text-base font-semibold text-white/90 tracking-wide mb-1">Industry</span>}>
+        <Field label="Industry">
           <Select
             value={form.industry}
             onChange={(v) => setForm((f) => ({ ...f, industry: v }))}
@@ -127,7 +127,7 @@ export default function EditLeadFormClient({ lead }: Props) {
             disabled={saving}
           />
         </Field>
-        <Field label={<span className="text-base font-semibold text-white/90 tracking-wide mb-1">Status</span>}>
+        <Field label="Status">
           <Select
             value={form.status}
             onChange={(v) => setForm((f) => ({ ...f, status: v }))}
@@ -143,7 +143,7 @@ export default function EditLeadFormClient({ lead }: Props) {
             disabled={saving}
           />
         </Field>
-        <Field label={<span className="text-base font-semibold text-white/90 tracking-wide mb-1">Follow Up Date</span>}>
+        <Field label="Follow Up Date">
           <Input type="date" name="follow_up_date" value={form.follow_up_date} onChange={handleChange} disabled={saving} />
         </Field>
         <ReadOnlyField label="Assigned User" value={lead.assigned_user_id} />
