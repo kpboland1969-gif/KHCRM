@@ -84,11 +84,12 @@ after insert on auth.users
 for each row execute procedure public.handle_new_auth_user();
 
 -- 5) Backfill: create profiles for existing auth users
-insert into public.profiles (id, email, full_name)
+insert into public.profiles (id, email, full_name, role)
 select
   u.id,
   u.email,
-  public.derive_display_name(u)
+  public.derive_display_name(u),
+  'user'
 from auth.users u
 on conflict (id) do nothing;
 

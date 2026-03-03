@@ -1,41 +1,66 @@
-import nodemailer from 'nodemailer';
+import 'server-only';
 
-export async function sendEmailSMTP({ to, subject, html, text, attachmentUrl, attachmentName }: {
+export type SendEmailSMTPParams = {
   to: string;
   subject: string;
-  html: string;
+  html?: string;
   text?: string;
-  attachmentUrl?: string;
-  attachmentName?: string;
-}) {
-  const host = process.env.SMTP_HOST!;
-  const port = Number(process.env.SMTP_PORT!);
-  const user = process.env.SMTP_USER!;
-  const pass = process.env.SMTP_PASS!;
-  const from = process.env.SMTP_FROM || user;
+  attachments?: Array<{
+    filename: string;
+    content: Buffer;
+    contentType?: string;
+  }>;
+};
+
+/**
+ * IMPORTANT:
+ * We intentionally avoid `import nodemailer from "nodemailer"` here.
+ * Turbopack on Windows can fail to resolve/bundle some Node-only deps under pnpm.
+ * This runtime require keeps nodemailer server-only and avoids bundler resolution.
+ */
+function getNodemailer() {
+  const _require = eval('require') as NodeRequire;
+
+  return _require('nodemailer');
+}
+
+function requiredEnv(name: string) {
+  const v = process.env[name];
+  if (!v) throw new Error(`Missing env var: ${name}`);
+  return v;
+}
+
+export async function sendEmailSMTP(params: SendEmailSMTPParams) {
+  const { to, subject, html, text, attachments } = params;
+
+  const host = requiredEnv('SMTP_HOST');
+  const port = Number(requiredEnv('SMTP_PORT'));
+  const secure = String(process.env.SMTP_SECURE ?? 'true') === 'true';
+  const user = requiredEnv('SMTP_USER');
+  const pass = requiredEnv('SMTP_PASS');
+  const from = requiredEnv('SMTP_FROM');
+
+  const nodemailer = getNodemailer();
 
   const transporter = nodemailer.createTransport({
     host,
     port,
-    secure: port === 465,
+    secure,
     auth: { user, pass },
   });
 
-  const mailOptions: any = {
+  const info = await transporter.sendMail({
     from,
     to,
     subject,
     html,
-    text,
-  };
-  if (attachmentUrl && attachmentName) {
-    mailOptions.attachments = [{ filename: attachmentName, path: attachmentUrl }];
-  }
+    text: text ?? (html ? undefined : ''),
+    attachments: attachments?.map((a) => ({
+      filename: a.filename,
+      content: a.content,
+      contentType: a.contentType,
+    })),
+  });
 
-  try {
-    const info = await transporter.sendMail(mailOptions);
-    return { success: true, info };
-  } catch (error) {
-    return { success: false, error };
-  }
+  return { messageId: info?.messageId ?? null };
 }

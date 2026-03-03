@@ -1,32 +1,45 @@
-import "server-only";
+import 'server-only';
 
-import type { createSupabaseServerClient } from "@/lib/supabase/server";
+import type { createSupabaseServerClient } from '@/lib/supabase/server';
 
-export type LeadActivityType = "note" | "view";
+/**
+ * STRICT Phase 4 schema contract for public.lead_activity:
+ * - id (uuid)
+ * - lead_id (uuid)
+ * - user_id (uuid, nullable)
+ * - type (text)  -- at least: 'note', 'view'
+ * - body (text, nullable)
+ * - created_at (timestamptz)
+ *
+ * This file MUST NOT reference legacy columns:
+ * - metadata
+ * - message
+ * - created_by
+ */
 
 export type LeadActivityRow = {
   id: string;
   lead_id: string;
   user_id: string | null;
-  type: LeadActivityType | string;
+  type: string;
   body: string | null;
   created_at: string;
 };
 
 export type LeadActivityDisplayRow = LeadActivityRow & {
-  actor_label: string; // "You", profile name/email, short id, or "System"
+  actor_label: string; // "You" | "System" | profile name/email | short id
 };
 
 type SupabaseServer = Awaited<ReturnType<typeof createSupabaseServerClient>>;
 
 function shortId(id: string) {
-  if (!id) return "";
+  if (!id) return '';
   if (id.length <= 12) return id;
   return `${id.slice(0, 8)}…${id.slice(-4)}`;
 }
 
 function errToText(err: any) {
-  if (!err) return "";
+  if (!err) return '';
   try {
     const e = err as any;
     return JSON.stringify({
@@ -45,9 +58,14 @@ function errToText(err: any) {
 }
 
 /**
- * Phase 4 contract (explicit):
- * Table: public.lead_activity
- * Columns: id, lead_id, user_id, type, body, created_at
+ * Non-throwing server error logger (never breaks rendering).
+ */
+export function logServerError(prefix: string, error: any) {
+  console.error(prefix, errToText(error));
+}
+
+/**
+ * Fetch lead activity newest-first.
  */
 export async function fetchLeadActivity(args: {
   supabase: SupabaseServer;
@@ -57,10 +75,10 @@ export async function fetchLeadActivity(args: {
   const { supabase, leadId, limit = 50 } = args;
 
   const { data, error } = await supabase
-    .from("lead_activity")
-    .select("id,lead_id,user_id,type,body,created_at")
-    .eq("lead_id", leadId)
-    .order("created_at", { ascending: false })
+    .from('lead_activity')
+    .select('id,lead_id,user_id,type,body,created_at')
+    .eq('lead_id', leadId)
+    .order('created_at', { ascending: false })
     .limit(limit);
 
   if (error) return { rows: [] as LeadActivityRow[], error };
@@ -69,14 +87,17 @@ export async function fetchLeadActivity(args: {
     id: String(r.id),
     lead_id: String(r.lead_id),
     user_id: r.user_id ? String(r.user_id) : null,
-    type: r.type ? String(r.type) : "unknown",
-    body: r.body ? String(r.body) : null,
+    type: r.type ? String(r.type) : 'unknown',
+    body: r.body !== null && r.body !== undefined ? String(r.body) : null,
     created_at: r.created_at ? String(r.created_at) : new Date().toISOString(),
   }));
 
   return { rows, error: null as any };
 }
 
+/**
+ * Insert a note into lead_activity.
+ */
 export async function insertLeadNote(args: {
   supabase: SupabaseServer;
   leadId: string;
@@ -85,10 +106,10 @@ export async function insertLeadNote(args: {
 }) {
   const { supabase, leadId, userId, body } = args;
 
-  const { error } = await supabase.from("lead_activity").insert({
+  const { error } = await supabase.from('lead_activity').insert({
     lead_id: leadId,
     user_id: userId,
-    type: "note",
+    type: 'note',
     body,
   });
 
@@ -96,8 +117,8 @@ export async function insertLeadNote(args: {
 }
 
 /**
- * Log a view event with 10-minute dedupe per (lead_id, user_id).
- * Never throws; returns error so caller can log without breaking the page.
+ * Log a view event with a dedupe window per (lead_id, user_id).
+ * Returns { error } but never throws.
  */
 export async function logLeadViewIfNeededServer(args: {
   supabase: SupabaseServer;
@@ -110,13 +131,13 @@ export async function logLeadViewIfNeededServer(args: {
   const cutoff = new Date(Date.now() - dedupeMinutes * 60 * 1000).toISOString();
 
   const { data: recent, error: recentError } = await supabase
-    .from("lead_activity")
-    .select("id")
-    .eq("lead_id", leadId)
-    .eq("user_id", userId)
-    .eq("type", "view")
-    .gte("created_at", cutoff)
-    .order("created_at", { ascending: false })
+    .from('lead_activity')
+    .select('id')
+    .eq('lead_id', leadId)
+    .eq('user_id', userId)
+    .eq('type', 'view')
+    .gte('created_at', cutoff)
+    .order('created_at', { ascending: false })
     .limit(1);
 
   if (recentError) return { error: recentError };
@@ -125,10 +146,10 @@ export async function logLeadViewIfNeededServer(args: {
     return { error: null as any };
   }
 
-  const { error: insertError } = await supabase.from("lead_activity").insert({
+  const { error: insertError } = await supabase.from('lead_activity').insert({
     lead_id: leadId,
     user_id: userId,
-    type: "view",
+    type: 'view',
     body: null,
   });
 
@@ -136,44 +157,44 @@ export async function logLeadViewIfNeededServer(args: {
 }
 
 /**
- * Actor labels:
- * - If profiles table exists and is readable, use profiles.full_name or profiles.email.
- * - Otherwise fall back to short user ids.
- *
- * (We avoid introducing new schema here; profiles can be formalized later if needed.)
+ * Optional: Map user ids -> human labels via profiles.
+ * If profiles doesn't exist or is blocked by RLS, falls back to short ids.
  */
-export async function getActorLabelMap(args: {
-  supabase: SupabaseServer;
-  userIds: string[];
-}) {
+export async function getActorLabelMap(args: { supabase: SupabaseServer; userIds: string[] }) {
   const { supabase } = args;
-
   const ids = Array.from(new Set(args.userIds.filter(Boolean)));
-  const map = new Map<string, string>();
 
+  const map = new Map<string, string>();
   if (ids.length === 0) return map;
 
-  // Default to short ids
   for (const id of ids) map.set(id, shortId(id));
 
-  const { data, error } = await supabase.from("profiles").select("id,full_name,email").in("id", ids);
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id,full_name,email')
+    .in('id', ids);
 
-  if (error) {
-    // profiles missing or RLS denied — return short ids map
-    return map;
-  }
+  if (error) return map;
 
   for (const row of Array.isArray(data) ? (data as any[]) : []) {
-    const id = row?.id ? String(row.id) : "";
+    const id = row?.id ? String(row.id) : '';
     if (!id) continue;
-    const fullName = row?.full_name ? String(row.full_name).trim() : "";
-    const email = row?.email ? String(row.email).trim() : "";
+
+    const fullName = row?.full_name ? String(row.full_name).trim() : '';
+    const email = row?.email ? String(row.email).trim() : '';
+
     map.set(id, fullName || email || shortId(id));
   }
 
   return map;
 }
 
+/**
+ * Attach actor_label onto each activity row:
+ * - null user_id => "System"
+ * - current user => "You"
+ * - else => profile name/email/short id
+ */
 export function attachActorLabels(args: {
   rows: LeadActivityRow[];
   currentUserId: string;
@@ -182,15 +203,10 @@ export function attachActorLabels(args: {
   const { rows, currentUserId, labelMap } = args;
 
   const out: LeadActivityDisplayRow[] = rows.map((r) => {
-    if (!r.user_id) return { ...r, actor_label: "System" };
-    if (r.user_id === currentUserId) return { ...r, actor_label: "You" };
+    if (!r.user_id) return { ...r, actor_label: 'System' };
+    if (r.user_id === currentUserId) return { ...r, actor_label: 'You' };
     return { ...r, actor_label: labelMap.get(r.user_id) ?? shortId(r.user_id) };
   });
 
   return out;
-}
-
-export function logServerError(prefix: string, error: any) {
-  // eslint-disable-next-line no-console
-  console.error(prefix, errToText(error));
 }

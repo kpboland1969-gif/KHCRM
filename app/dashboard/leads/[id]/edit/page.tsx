@@ -1,79 +1,61 @@
-import "server-only";
+import 'server-only';
 
-import Link from "next/link";
-import { redirect } from "next/navigation";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import Link from 'next/link';
+import { redirect } from 'next/navigation';
+import { createSupabaseServerClient } from '@/lib/supabase/server';
 
 type PageProps = {
-  params: Promise<{ id: string }>;
+  params: any;
 };
+
+const STATUS_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: 'new_lead', label: 'New Lead' },
+  { value: 'email_campaign', label: 'Email Campaign' },
+  { value: 'warm_lead', label: 'Warm Lead' },
+  { value: 'assessment_stage', label: 'Assessment Stage' },
+  { value: 'onboarding', label: 'Onboarding' },
+  { value: 'client', label: 'Client' },
+];
+
+const INDUSTRY_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: 'construction', label: 'Construction' },
+  { value: 'subcontractor', label: 'Subcontractor' },
+  { value: 'manufacturing', label: 'Manufacturing' },
+  { value: 'wholesale', label: 'Wholesale' },
+];
 
 function isUuidLike(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 }
 
-function pick(lead: any, keys: string[]) {
-  for (const k of keys) {
-    const v = lead?.[k];
-    if (v !== null && v !== undefined && String(v).length > 0) return v;
-  }
-  return "";
+function inputClassName() {
+  return 'h-10 w-full rounded-xl border border-white/10 bg-white/[0.03] px-3 text-sm text-white outline-none focus:border-white/20';
 }
 
-function formatDateInput(value: any) {
-  if (!value) return "";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return "";
-  const yyyy = String(d.getFullYear());
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
+function labelClassName() {
+  return 'text-sm font-medium text-white/80';
 }
 
-function Field({
-  label,
-  name,
-  defaultValue,
-  type = "text",
-  required,
-}: {
-  label: string;
-  name: string;
-  defaultValue?: string;
-  type?: string;
-  required?: boolean;
-}) {
-  return (
-    <div className="space-y-2">
-      <div className="text-sm font-medium text-white/90">
-        {label} {required ? <span className="text-white/60">*</span> : null}
-      </div>
-      <input
-        name={name}
-        type={type}
-        defaultValue={defaultValue ?? ""}
-        required={required}
-        className="w-full rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-white outline-none focus:border-white/20"
-      />
-    </div>
-  );
+function cardClassName() {
+  return 'rounded-2xl border border-white/10 bg-white/[0.02] p-6';
 }
 
-function firstExistingKey(row: Record<string, any>, candidates: string[]) {
-  for (const k of candidates) {
-    if (Object.prototype.hasOwnProperty.call(row, k)) return k;
-  }
-  return null;
+function getString(formData: FormData, key: string) {
+  const v = formData.get(key);
+  if (typeof v !== 'string') return null;
+  const s = v.trim();
+  return s.length ? s : null;
 }
 
-export default async function LeadEditPage({ params }: PageProps) {
-  const { id: leadId } = await params;
+export default async function EditLeadPage({ params }: PageProps) {
+  const resolvedParams = await Promise.resolve(params);
+  const leadId = resolvedParams?.id as string | undefined;
 
-  if (!leadId || typeof leadId !== "string" || !isUuidLike(leadId)) {
+  if (!leadId || !isUuidLike(leadId)) {
     return (
       <div className="p-6">
         <h1 className="text-xl font-semibold">Lead Not Found</h1>
-        <p className="mt-2 text-sm text-muted-foreground">Invalid lead id.</p>
+        <p className="mt-2 text-sm text-white/70">Invalid lead id.</p>
       </div>
     );
   }
@@ -86,13 +68,11 @@ export default async function LeadEditPage({ params }: PageProps) {
   } = await supabase.auth.getUser();
 
   if (userError) {
-    console.error("[LeadEdit] auth.getUser error:", userError);
+    console.error('[EditLead] auth.getUser error:', userError);
     return (
       <div className="p-6">
         <h1 className="text-xl font-semibold">Auth Error</h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          We couldn’t verify your session on the server.
-        </p>
+        <p className="mt-2 text-sm text-white/70">Could not verify your session.</p>
       </div>
     );
   }
@@ -101,194 +81,331 @@ export default async function LeadEditPage({ params }: PageProps) {
     return (
       <div className="p-6">
         <h1 className="text-xl font-semibold">Not Logged In</h1>
-        <p className="mt-2 text-sm text-muted-foreground">No server-side session found.</p>
+        <p className="mt-2 text-sm text-white/70">No server session found.</p>
       </div>
     );
   }
 
   const { data: lead, error: leadError } = await supabase
-    .from("leads")
-    .select("*")
-    .eq("id", leadId)
+    .from('leads')
+    .select(
+      'id,company_name,contact_person,title,phone,email,website,address1,address2,city,state,zip,industry,status,follow_up_date',
+    )
+    .eq('id', leadId)
     .maybeSingle();
 
   if (leadError) {
-    console.error("[LeadEdit] leads query error:", { leadId, userId: user.id, error: leadError });
-    return (
-      <div className="p-6">
-        <h1 className="text-xl font-semibold">Could Not Load Lead</h1>
-        <p className="mt-2 text-sm text-muted-foreground">{leadError.message}</p>
-      </div>
-    );
+    console.error('[EditLead] lead query error:', leadError);
   }
 
   if (!lead) {
     return (
       <div className="p-6">
         <h1 className="text-xl font-semibold">Lead Not Found</h1>
-        <p className="mt-2 text-sm text-muted-foreground">
+        <p className="mt-2 text-sm text-white/70">
           The lead you are looking for does not exist or you do not have access.
         </p>
       </div>
     );
   }
 
-  const l: any = lead;
-
-  const companyName = pick(l, ["company_name", "companyName", "company", "name"]);
-  const contactPerson = pick(l, [
-    "contact_person",
-    "contactPerson",
-    "contact_name",
-    "contactName",
-    "primary_contact",
-  ]);
-  const title = pick(l, ["title", "job_title", "jobTitle"]);
-  const phone = pick(l, ["phone", "phone_number", "phoneNumber"]);
-  const email = pick(l, ["email"]);
-  const website = pick(l, ["website", "url"]);
-  const address1 = pick(l, ["address_1", "address1", "address_line_1", "addressLine1"]);
-  const address2 = pick(l, ["address_2", "address2", "address_line_2", "addressLine2"]);
-  const city = pick(l, ["city"]);
-  const state = pick(l, ["state", "province", "region"]);
-  const zip = pick(l, ["zip", "postal_code", "postalCode"]);
-  const industry = pick(l, ["industry"]);
-  const status = pick(l, ["status"]);
-  const followupDateRaw = pick(l, [
-    "followup_at",
-    "followupAt",
-    "follow_up_at",
-    "follow_up_date",
-    "followup_date",
-  ]);
-  const followupDate = formatDateInput(followupDateRaw);
-
   async function updateLead(formData: FormData) {
-    "use server";
+    'use server';
+    if (!leadId || typeof leadId !== 'string') {
+      throw new Error('Invalid leadId');
+    }
 
     const supabase = await createSupabaseServerClient();
 
     const {
       data: { user },
-      error: userError,
     } = await supabase.auth.getUser();
 
-    if (userError || !user) {
-      console.error("[LeadEdit] updateLead auth error:", userError);
-      redirect(`/dashboard/leads/${leadId}`);
+    if (!user) {
+      redirect('/login');
     }
 
-    // Re-fetch to discover which columns exist (prevents “unknown column” errors)
-    const { data: current, error: currentError } = await supabase
-      .from("leads")
-      .select("*")
-      .eq("id", leadId)
+    // Read current values so we can log meaningful activity if changed.
+    const { data: before, error: beforeError } = await supabase
+      .from('leads')
+      .select('status,follow_up_date')
+      .eq('id', leadId)
       .maybeSingle();
 
-    if (currentError || !current) {
-      console.error("[LeadEdit] updateLead fetch current error:", { leadId, error: currentError });
-      redirect(`/dashboard/leads/${leadId}/edit`);
+    if (beforeError) {
+      console.error('[EditLead] before read error:', beforeError);
+      // Continue anyway; we can still save the lead.
     }
 
-    const row = current as Record<string, any>;
-    const updates: Record<string, any> = {};
-
-    const companyVal = String(formData.get("company_name") ?? "").trim();
-    const contactVal = String(formData.get("contact_person") ?? "").trim();
-
-    const setIfExists = (candidates: string[], value: string | null) => {
-      const key = firstExistingKey(row, candidates);
-      if (!key) return;
-      updates[key] = value;
+    // Build patch object (only fields we edit here)
+    const patch: Record<string, any> = {
+      company_name: getString(formData, 'company_name'),
+      contact_person: getString(formData, 'contact_person'),
+      title: getString(formData, 'title'),
+      phone: getString(formData, 'phone'),
+      email: getString(formData, 'email'),
+      website: getString(formData, 'website'),
+      address1: getString(formData, 'address1'),
+      address2: getString(formData, 'address2'),
+      city: getString(formData, 'city'),
+      state: getString(formData, 'state'),
+      zip: getString(formData, 'zip'),
+      industry: getString(formData, 'industry'),
+      status: getString(formData, 'status'),
     };
 
-    // Required-ish fields
-    setIfExists(["company_name", "name", "company"], companyVal || null);
-    setIfExists(["contact_person", "contact_name", "contact"], contactVal || null);
+    // followup_at comes from <input type="date"> => YYYY-MM-DD
+    const followupDate = getString(formData, 'followup_at');
+    // DB column is follow_up_date (per Supabase error/hint)
+    patch.follow_up_date = followupDate ? `${followupDate}T00:00:00.000Z` : null;
 
-    // Optional fields
-    setIfExists(["title", "job_title"], String(formData.get("title") ?? "").trim() || null);
-    setIfExists(["phone", "phone_number"], String(formData.get("phone") ?? "").trim() || null);
-    setIfExists(["email"], String(formData.get("email") ?? "").trim() || null);
-    setIfExists(["website", "url"], String(formData.get("website") ?? "").trim() || null);
-    setIfExists(["address_1", "address_line_1"], String(formData.get("address_1") ?? "").trim() || null);
-    setIfExists(["address_2", "address_line_2"], String(formData.get("address_2") ?? "").trim() || null);
-    setIfExists(["city"], String(formData.get("city") ?? "").trim() || null);
-    setIfExists(["state", "province", "region"], String(formData.get("state") ?? "").trim() || null);
-    setIfExists(["zip", "postal_code"], String(formData.get("zip") ?? "").trim() || null);
-    setIfExists(["industry"], String(formData.get("industry") ?? "").trim() || null);
-    setIfExists(["status"], String(formData.get("status") ?? "").trim() || null);
+    const nextStatus = (patch.status ?? null) as string | null;
+    const nextFollowUpDate = (patch.follow_up_date ?? null) as string | null;
 
-    const followup = String(formData.get("followup_at") ?? "").trim();
-    const followupKey = firstExistingKey(row, ["followup_at", "follow_up_at", "follow_up_date", "followup_date"]);
-    if (followupKey) {
-      updates[followupKey] = followup ? new Date(followup).toISOString() : null;
-    }
-
-    if (Object.keys(updates).length === 0) {
-      // Nothing to update (or schema mismatch)
-      redirect(`/dashboard/leads/${leadId}`);
-    }
-
-    const { error } = await supabase.from("leads").update(updates).eq("id", leadId);
+    const { error } = await supabase.from('leads').update(patch).eq('id', leadId);
 
     if (error) {
-      console.error("[LeadEdit] update error:", { leadId, userId: user.id, error, updates });
-      redirect(`/dashboard/leads/${leadId}/edit`);
+      console.error('[EditLead] update error:', error);
+      // Keep user on edit page if update fails
+      redirect(`/dashboard/leads/${leadId}/edit?error=save_failed`);
     }
 
-    // Success: return to locked detail view
+    // Phase 4: auto-log status/follow-up changes to lead_activity.
+    const prevStatus = before?.status ?? null;
+    const prevFollowUp = before?.follow_up_date ?? null;
+
+    const activityRows: Array<{
+      lead_id: string;
+      user_id: string;
+      type: string;
+      body: string | null;
+    }> = [];
+
+    if (prevStatus !== nextStatus) {
+      activityRows.push({
+        lead_id: leadId,
+        user_id: user.id,
+        type: 'status_change',
+        body: `Status changed from ${prevStatus ?? '—'} to ${nextStatus ?? '—'}.`,
+      });
+    }
+
+    if (prevFollowUp !== nextFollowUpDate) {
+      const fromText = prevFollowUp ? new Date(prevFollowUp).toLocaleDateString() : '—';
+      const toText = nextFollowUpDate ? new Date(nextFollowUpDate).toLocaleDateString() : '—';
+
+      activityRows.push({
+        lead_id: leadId,
+        user_id: user.id,
+        type: 'followup_change',
+        body: `Follow-up date changed from ${fromText} to ${toText}.`,
+      });
+    }
+
+    if (activityRows.length > 0) {
+      const { error: actErr } = await supabase.from('lead_activity').insert(activityRows);
+      if (actErr) {
+        // Never block the save flow for logging problems.
+        console.error('[EditLead] activity insert error:', actErr);
+      }
+    }
+
     redirect(`/dashboard/leads/${leadId}`);
   }
 
+  // Convert follow_up_date to YYYY-MM-DD for <input type="date">
+  const followupDateValue =
+    (lead as any).follow_up_date && !Number.isNaN(new Date((lead as any).follow_up_date).getTime())
+      ? new Date((lead as any).follow_up_date).toISOString().slice(0, 10)
+      : '';
+
   return (
-    <div className="p-6">
-      <form action={updateLead}>
-        <div className="mb-6 flex items-start justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-semibold">Edit Lead</h1>
-            <p className="mt-1 text-sm text-white/60">ID: {leadId}</p>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Link
-              href={`/dashboard/leads/${leadId}`}
-              className="inline-flex items-center justify-center rounded-xl border border-white/10 bg-white/[0.03] px-4 py-2 text-sm font-medium text-white hover:bg-white/[0.06]"
-            >
-              Cancel
-            </Link>
-            <button
-              type="submit"
-              className="inline-flex items-center justify-center rounded-xl border border-white/10 bg-white/[0.06] px-4 py-2 text-sm font-medium text-white hover:bg-white/[0.09]"
-            >
-              Save
-            </button>
-          </div>
+    <div className="p-6 space-y-6">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold">Edit Lead</h1>
+          <div className="mt-1 text-sm text-white/60">ID: {lead.id}</div>
         </div>
 
-        <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
-          <div className="text-sm text-white/60">Editable fields are shown in highlighted boxes.</div>
+        <div className="flex gap-2">
+          <Link
+            href={`/dashboard/leads/${lead.id}`}
+            className="inline-flex items-center justify-center rounded-xl border border-white/10 bg-white/[0.03] px-4 py-2 text-sm font-medium text-white hover:bg-white/[0.06]"
+          >
+            Cancel
+          </Link>
 
-          <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
-            <Field label="Company Name" name="company_name" defaultValue={companyName} required />
-            <Field label="Contact Person" name="contact_person" defaultValue={contactPerson} required />
-            <Field label="Title" name="title" defaultValue={title} />
-            <Field label="Phone" name="phone" defaultValue={phone} />
-            <Field label="Email" name="email" defaultValue={email} type="email" />
-            <Field label="Website" name="website" defaultValue={website} />
-            <Field label="Address 1" name="address_1" defaultValue={address1} />
-            <Field label="Address 2" name="address_2" defaultValue={address2} />
-            <Field label="City" name="city" defaultValue={city} />
-            <Field label="State" name="state" defaultValue={state} />
-            <Field label="Zip" name="zip" defaultValue={zip} />
-            <Field label="Industry" name="industry" defaultValue={industry} />
-            <Field label="Status" name="status" defaultValue={status} />
-            <Field label="Follow-up Date" name="followup_at" defaultValue={followupDate} type="date" />
+          <button
+            form="edit-lead-form"
+            type="submit"
+            className="inline-flex items-center justify-center rounded-xl border border-white/10 bg-white/[0.06] px-4 py-2 text-sm font-medium text-white hover:bg-white/[0.10]"
+          >
+            Save
+          </button>
+        </div>
+      </div>
+
+      <div className={cardClassName()}>
+        <div className="text-sm text-white/60">Editable fields are shown in highlighted boxes.</div>
+
+        <form id="edit-lead-form" action={updateLead} className="mt-4 space-y-6">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <div className={labelClassName()}>
+                Company Name <span className="text-white/50">*</span>
+              </div>
+              <input
+                name="company_name"
+                defaultValue={(lead.company_name ?? '') as string}
+                className={inputClassName()}
+                required
+              />
+            </div>
+
+            <div className="space-y-2">
+              <div className={labelClassName()}>
+                Contact Person <span className="text-white/50">*</span>
+              </div>
+              <input
+                name="contact_person"
+                defaultValue={(lead.contact_person ?? '') as string}
+                className={inputClassName()}
+                required
+              />
+            </div>
+
+            <div className="space-y-2">
+              <div className={labelClassName()}>Title</div>
+              <input
+                name="title"
+                defaultValue={(lead.title ?? '') as string}
+                className={inputClassName()}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <div className={labelClassName()}>Phone</div>
+              <input
+                name="phone"
+                defaultValue={(lead.phone ?? '') as string}
+                className={inputClassName()}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <div className={labelClassName()}>Email</div>
+              <input
+                name="email"
+                type="email"
+                defaultValue={(lead.email ?? '') as string}
+                className={inputClassName()}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <div className={labelClassName()}>Website</div>
+              <input
+                name="website"
+                defaultValue={(lead.website ?? '') as string}
+                className={inputClassName()}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <div className={labelClassName()}>Address 1</div>
+              <input
+                name="address1"
+                defaultValue={(lead.address1 ?? '') as string}
+                className={inputClassName()}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <div className={labelClassName()}>Address 2</div>
+              <input
+                name="address2"
+                defaultValue={(lead.address2 ?? '') as string}
+                className={inputClassName()}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <div className={labelClassName()}>City</div>
+              <input
+                name="city"
+                defaultValue={(lead.city ?? '') as string}
+                className={inputClassName()}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <div className={labelClassName()}>State</div>
+              <input
+                name="state"
+                defaultValue={(lead.state ?? '') as string}
+                className={inputClassName()}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <div className={labelClassName()}>Zip</div>
+              <input
+                name="zip"
+                defaultValue={(lead.zip ?? '') as string}
+                className={inputClassName()}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <div className={labelClassName()}>Industry</div>
+              <select
+                name="industry"
+                defaultValue={(lead.industry ?? '') as string}
+                className={inputClassName()}
+              >
+                <option value="" disabled>
+                  Select industry
+                </option>
+                {INDUSTRY_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-2">
+              <div className={labelClassName()}>Status</div>
+              <select
+                name="status"
+                defaultValue={(lead.status ?? '') as string}
+                className={inputClassName()}
+              >
+                <option value="" disabled>
+                  Select status
+                </option>
+                {STATUS_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-2">
+              <div className={labelClassName()}>Follow-up Date</div>
+              <input
+                name="followup_at"
+                type="date"
+                defaultValue={followupDateValue}
+                className={inputClassName()}
+              />
+            </div>
           </div>
 
-          <div className="mt-6 text-xs text-white/50">Server session userId: {user.id}</div>
-        </div>
-      </form>
+          <div className="text-xs text-white/40">Server session userId: {user.id}</div>
+        </form>
+      </div>
     </div>
   );
 }

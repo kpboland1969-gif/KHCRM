@@ -1,8 +1,16 @@
-import "server-only";
+function getActorLabel(params: { actorId: string | null | undefined; currentUserId: string }) {
+  const { actorId, currentUserId } = params;
 
-import Link from "next/link";
-import { redirect } from "next/navigation";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+  if (!actorId) return 'System';
+  if (actorId === currentUserId) return 'You';
+  return `User ${actorId.slice(0, 8)}`;
+}
+import 'server-only';
+
+import Link from 'next/link';
+import EmailSlideOver from '@/components/leads/EmailSlideOver';
+import { redirect } from 'next/navigation';
+import { createSupabaseServerClient } from '@/lib/supabase/server';
 import {
   attachActorLabels,
   fetchLeadActivity,
@@ -11,7 +19,7 @@ import {
   logLeadViewIfNeededServer,
   logServerError,
   type LeadActivityDisplayRow,
-} from "@/lib/leads/activity.server";
+} from '@/lib/leads/activity.server';
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -26,23 +34,23 @@ function pick(lead: any, keys: string[]) {
     const v = lead?.[k];
     if (v !== null && v !== undefined && String(v).length > 0) return v;
   }
-  return "";
+  return '';
 }
 
 function formatDateInput(value: any) {
-  if (!value) return "";
+  if (!value) return '';
   const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return "";
+  if (Number.isNaN(d.getTime())) return '';
   const yyyy = String(d.getFullYear());
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
   return `${yyyy}-${mm}-${dd}`;
 }
 
 function formatWhen(value: any) {
-  if (!value) return "";
+  if (!value) return '';
   const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return "";
+  if (Number.isNaN(d.getTime())) return '';
   return d.toLocaleString();
 }
 
@@ -53,7 +61,7 @@ type LockedFieldProps = {
 };
 
 function LockedField(props: LockedFieldProps) {
-  const { label, value, type = "text" } = props;
+  const { label, value, type = 'text' } = props;
 
   return (
     <div className="space-y-2">
@@ -62,7 +70,7 @@ function LockedField(props: LockedFieldProps) {
         type={type}
         readOnly
         disabled
-        value={value ?? ""}
+        value={value ?? ''}
         className="w-full cursor-not-allowed rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-white/90 outline-none disabled:opacity-100"
       />
     </div>
@@ -73,7 +81,7 @@ function ActivityItem(props: { item: LeadActivityDisplayRow }) {
   const { item } = props;
 
   const titleBase =
-    item.type === "note" ? "Note" : item.type === "view" ? "Viewed" : String(item.type);
+    item.type === 'note' ? 'Note' : item.type === 'view' ? 'Viewed' : String(item.type);
 
   const title = `${titleBase} by ${item.actor_label}`;
 
@@ -84,13 +92,11 @@ function ActivityItem(props: { item: LeadActivityDisplayRow }) {
         <div className="text-xs text-white/50">{formatWhen(item.created_at)}</div>
       </div>
 
-      {item.type === "note" ? (
-        <div className="mt-2 whitespace-pre-wrap text-sm text-white/80">
-          {item.body || ""}
-        </div>
+      {item.type === 'note' ? (
+        <div className="mt-2 whitespace-pre-wrap text-sm text-white/80">{item.body || ''}</div>
       ) : null}
 
-      {item.type === "view" ? (
+      {item.type === 'view' ? (
         <div className="mt-2 text-sm text-white/70">This lead was opened.</div>
       ) : null}
     </div>
@@ -100,7 +106,7 @@ function ActivityItem(props: { item: LeadActivityDisplayRow }) {
 export default async function LeadDetailPage({ params }: PageProps) {
   const { id: leadId } = await params;
 
-  if (!leadId || typeof leadId !== "string" || !isUuidLike(leadId)) {
+  if (!leadId || typeof leadId !== 'string' || !isUuidLike(leadId)) {
     return (
       <div className="p-6">
         <h1 className="text-xl font-semibold">Lead Not Found</h1>
@@ -117,7 +123,7 @@ export default async function LeadDetailPage({ params }: PageProps) {
   } = await supabase.auth.getUser();
 
   if (userError) {
-    logServerError("[LeadDetail] auth.getUser error:", userError);
+    logServerError('[LeadDetail] auth.getUser error:', userError);
     return (
       <div className="p-6">
         <h1 className="text-xl font-semibold">Auth Error</h1>
@@ -138,13 +144,13 @@ export default async function LeadDetailPage({ params }: PageProps) {
   }
 
   const { data: lead, error: leadError } = await supabase
-    .from("leads")
-    .select("*")
-    .eq("id", leadId)
+    .from('leads')
+    .select('*')
+    .eq('id', leadId)
     .maybeSingle();
 
   if (leadError) {
-    logServerError("[LeadDetail] leads query error:", leadError);
+    logServerError('[LeadDetail] leads query error:', leadError);
     return (
       <div className="p-6">
         <h1 className="text-xl font-semibold">Could Not Load Lead</h1>
@@ -164,36 +170,69 @@ export default async function LeadDetailPage({ params }: PageProps) {
     );
   }
 
+  // Documents query for EmailSlideOver
+  const { data: docsRaw, error: docsErr } = await supabase
+    .from('documents')
+    .select('id,filename')
+    .order('created_at', { ascending: false })
+    .limit(500);
+
+  if (docsErr) {
+    console.error('[LeadDetail] documents query error:', docsErr);
+  }
+
+  const documents = Array.isArray(docsRaw)
+    ? docsRaw.map((d: any) => ({
+        id: String(d.id),
+        filename: String(d.filename ?? 'Document'),
+      }))
+    : [];
+
+  const leadEmail = (lead as any)?.email ? String((lead as any).email) : null;
+
   // View logging (10-min dedupe). Never blocks rendering.
-  const viewRes = await logLeadViewIfNeededServer({
-    supabase,
-    leadId,
-    userId: user.id,
-    dedupeMinutes: 10,
-  });
-  if (viewRes.error) {
-    logServerError("[LeadDetail] view logging error:", viewRes.error);
+  // View dedupe query and insert
+  const cutoff = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+  const { data: recentView, error: recentViewError } = await supabase
+    .from('lead_activity')
+    .select('id')
+    .eq('lead_id', leadId)
+    .eq('user_id', user.id)
+    .eq('type', 'view')
+    .gte('created_at', cutoff)
+    .order('created_at', { ascending: false })
+    .limit(1);
+  if (!recentViewError && (!Array.isArray(recentView) || recentView.length === 0)) {
+    const { error: insertViewError } = await supabase.from('lead_activity').insert([
+      {
+        lead_id: leadId,
+        type: 'view',
+        body: null,
+        user_id: user.id,
+      },
+    ]);
+    if (insertViewError) {
+      logServerError('[LeadDetail] view logging error:', insertViewError);
+    }
+  } else if (recentViewError) {
+    logServerError('[LeadDetail] view logging error:', recentViewError);
   }
 
   // Activity feed (newest first)
-  const activityRes = await fetchLeadActivity({ supabase, leadId, limit: 50 });
+  const activityRes = await supabase
+    .from('lead_activity')
+    .select('id,lead_id,user_id,type,body,created_at')
+    .eq('lead_id', leadId)
+    .order('created_at', { ascending: false })
+    .limit(50);
   if (activityRes.error) {
-    logServerError("[LeadDetail] activity query error:", activityRes.error);
+    logServerError('[LeadDetail] activity query error:', activityRes.error);
   }
 
-  const rawRows = activityRes.rows;
-
-  const actorIds = rawRows.map((r) => r.user_id).filter((x): x is string => Boolean(x));
-  const labelMap = await getActorLabelMap({ supabase, userIds: actorIds });
-
-  const activity = attachActorLabels({
-    rows: rawRows,
-    currentUserId: user.id,
-    labelMap,
-  });
+  const activity = Array.isArray(activityRes.data) ? activityRes.data : [];
 
   async function addNote(formData: FormData) {
-    "use server";
+    'use server';
 
     const supabase = await createSupabaseServerClient();
 
@@ -203,16 +242,23 @@ export default async function LeadDetailPage({ params }: PageProps) {
     } = await supabase.auth.getUser();
 
     if (userError || !user) {
-      logServerError("[LeadDetail] addNote auth error:", userError);
+      logServerError('[LeadDetail] addNote auth error:', userError);
       redirect(`/dashboard/leads/${leadId}`);
     }
 
-    const body = String(formData.get("note") ?? "").trim();
+    const body = String(formData.get('note') ?? '').trim();
     if (!body) redirect(`/dashboard/leads/${leadId}`);
 
-    const res = await insertLeadNote({ supabase, leadId, userId: user.id, body });
+    const res = await supabase.from('lead_activity').insert([
+      {
+        lead_id: leadId,
+        type: 'note',
+        body,
+        user_id: user.id,
+      },
+    ]);
     if (res.error) {
-      logServerError("[LeadDetail] addNote insert error:", res.error);
+      logServerError('[LeadDetail] addNote insert error:', res.error);
     }
 
     redirect(`/dashboard/leads/${leadId}`);
@@ -220,31 +266,31 @@ export default async function LeadDetailPage({ params }: PageProps) {
 
   const l: any = lead;
 
-  const companyName = pick(l, ["company_name", "companyName", "company", "name"]);
+  const companyName = pick(l, ['company_name', 'companyName', 'company', 'name']);
   const contactPerson = pick(l, [
-    "contact_person",
-    "contactPerson",
-    "contact_name",
-    "contactName",
-    "primary_contact",
+    'contact_person',
+    'contactPerson',
+    'contact_name',
+    'contactName',
+    'primary_contact',
   ]);
-  const title = pick(l, ["title", "job_title", "jobTitle"]);
-  const phone = pick(l, ["phone", "phone_number", "phoneNumber"]);
-  const email = pick(l, ["email"]);
-  const website = pick(l, ["website", "url"]);
-  const address1 = pick(l, ["address_1", "address1", "address_line_1", "addressLine1"]);
-  const address2 = pick(l, ["address_2", "address2", "address_line_2", "addressLine2"]);
-  const city = pick(l, ["city"]);
-  const state = pick(l, ["state", "province", "region"]);
-  const zip = pick(l, ["zip", "postal_code", "postalCode"]);
-  const industry = pick(l, ["industry"]);
-  const status = pick(l, ["status"]);
+  const title = pick(l, ['title', 'job_title', 'jobTitle']);
+  const phone = pick(l, ['phone', 'phone_number', 'phoneNumber']);
+  const email = pick(l, ['email']);
+  const website = pick(l, ['website', 'url']);
+  const address1 = pick(l, ['address_1', 'address1', 'address_line_1', 'addressLine1']);
+  const address2 = pick(l, ['address_2', 'address2', 'address_line_2', 'addressLine2']);
+  const city = pick(l, ['city']);
+  const state = pick(l, ['state', 'province', 'region']);
+  const zip = pick(l, ['zip', 'postal_code', 'postalCode']);
+  const industry = pick(l, ['industry']);
+  const status = pick(l, ['status']);
   const followupDateRaw = pick(l, [
-    "followup_at",
-    "followupAt",
-    "follow_up_at",
-    "follow_up_date",
-    "followup_date",
+    'followup_at',
+    'followupAt',
+    'follow_up_at',
+    'follow_up_date',
+    'followup_date',
   ]);
   const followupDate = formatDateInput(followupDateRaw);
 
@@ -256,17 +302,20 @@ export default async function LeadDetailPage({ params }: PageProps) {
           <p className="mt-1 text-sm text-white/60">ID: {leadId}</p>
         </div>
 
-        <Link
-          href={`/dashboard/leads/${leadId}/edit`}
-          className="inline-flex items-center justify-center rounded-xl border border-white/10 bg-white/[0.03] px-4 py-2 text-sm font-medium text-white hover:bg-white/[0.06]"
-        >
-          Edit
-        </Link>
+        <div className="flex gap-2">
+          <Link
+            href={`/dashboard/leads/${leadId}/edit`}
+            className="inline-flex items-center justify-center rounded-xl border border-white/10 bg-white/[0.03] px-4 py-2 text-sm font-medium text-white hover:bg-white/[0.06]"
+          >
+            Edit
+          </Link>
+          <EmailSlideOver leadId={leadId} leadEmail={leadEmail} documents={documents} />
+        </div>
       </div>
 
       <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
         <div className="text-sm text-white/60">
-          Fields are locked on this page. Click{" "}
+          Fields are locked on this page. Click{' '}
           <span className="font-medium text-white/80">Edit</span> to make changes.
         </div>
 
@@ -319,9 +368,50 @@ export default async function LeadDetailPage({ params }: PageProps) {
               <div className="text-sm text-white/70">No activity yet.</div>
             ) : null}
 
-            {activity.map((item) => (
-              <ActivityItem key={item.id} item={item} />
-            ))}
+            {activity.map((item) => {
+              const actorLabel = getActorLabel({
+                actorId: (item as any).user_id,
+                currentUserId: user.id,
+              });
+
+              const type = (item as any).type as string | undefined;
+              const title =
+                type === 'view'
+                  ? `Viewed by ${actorLabel}`
+                  : type === 'note'
+                    ? `Note by ${actorLabel}`
+                    : type === 'email_sent'
+                      ? `Email sent by ${actorLabel}`
+                      : `${(type ?? 'Activity').toString()} by ${actorLabel}`;
+
+              const bodyText = ((item as any).body as string | undefined) ?? '';
+
+              const createdAt = (item as any).created_at;
+
+              return (
+                <div
+                  className="rounded-xl border border-white/10 bg-white/[0.02] p-4"
+                  key={(item as any).id ?? `${type ?? 'activity'}-${String(createdAt ?? '')}`}
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="text-sm font-medium text-white/90">{title}</div>
+                    <div className="text-xs text-white/50">{formatWhen(createdAt)}</div>
+                  </div>
+
+                  {type === 'note' ? (
+                    <div className="mt-2 whitespace-pre-wrap text-sm text-white/80">{bodyText}</div>
+                  ) : null}
+
+                  {type === 'email_sent' ? (
+                    <div className="mt-2 whitespace-pre-wrap text-sm text-white/80">{bodyText}</div>
+                  ) : null}
+
+                  {type === 'view' ? (
+                    <div className="mt-2 text-sm text-white/70">This lead was opened.</div>
+                  ) : null}
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>
