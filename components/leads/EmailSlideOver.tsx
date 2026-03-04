@@ -3,22 +3,34 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
+import { useRef } from 'react';
 
 type Doc = { id: string; filename: string };
 
-export default function EmailSlideOver(props: {
-  // (removed illegal router line)
+export type EmailSlideOverPrefill = {
+  to?: string;
+  subject?: string;
+  body?: string;
+  documentIds?: string[];
+  resendFromLogId?: string;
+};
+
+type EmailSlideOverProps = {
   leadId: string;
   leadEmail: string | null;
   documents: Doc[];
-}) {
-  const router = useRouter();
-  const closePanel = () => {
-    setOpen(false);
-  };
-  const { leadId, leadEmail, documents } = props;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  prefill?: EmailSlideOverPrefill;
+};
 
-  const [open, setOpen] = useState(false);
+export default function EmailSlideOver(props: EmailSlideOverProps) {
+  const router = useRouter();
+  const isControlled = typeof props.open === 'boolean' && typeof props.onOpenChange === 'function';
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = isControlled ? props.open! : internalOpen;
+  const setOpen = isControlled ? props.onOpenChange! : setInternalOpen;
+  const { leadId, leadEmail, documents, prefill } = props;
 
   const [to, setTo] = useState(leadEmail ?? '');
   const [subject, setSubject] = useState('');
@@ -31,6 +43,37 @@ export default function EmailSlideOver(props: {
   const [lastSentByDocumentId, setLastSentByDocumentId] = useState<
     Record<string, { sent_at: string; to_email: string | null }>
   >({});
+
+  const lastPrefillKeyRef = useRef<string | null>(null);
+  const prefillKey = prefill
+    ? JSON.stringify({
+        to: prefill.to ?? null,
+        subject: prefill.subject ?? null,
+        body: prefill.body ?? null,
+        documentIds: (prefill.documentIds ?? []).slice().sort(),
+      })
+    : null;
+
+  // Prefill logic
+  useEffect(() => {
+    if (!open) {
+      lastPrefillKeyRef.current = null;
+      return;
+    }
+    if (!prefill || !prefillKey) return;
+
+    if (lastPrefillKeyRef.current === prefillKey) return;
+    lastPrefillKeyRef.current = prefillKey;
+
+    if (prefill.to !== undefined) setTo(prefill.to);
+    if (prefill.subject !== undefined) setSubject(prefill.subject);
+    if (prefill.body !== undefined) setBody(prefill.body);
+
+    if (Array.isArray(prefill.documentIds)) {
+      const docsSet = new Set(documents.map((d) => d.id));
+      setSelectedIds(prefill.documentIds.filter((id) => docsSet.has(id)));
+    }
+  }, [open, prefillKey, prefill, documents]);
 
   // Keep "To" synced when opening a different lead
   useEffect(() => {
@@ -91,29 +134,47 @@ export default function EmailSlideOver(props: {
     }
 
     setBusy(true);
+    let force = false;
     try {
-      const res = await fetch('/api/email/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          leadId,
-          to: toTrim,
-          subject: subjectTrim,
-          body: bodyTrim,
-          documentIds: selectedIds,
-        }),
-      });
+      let response;
+      let data;
+      for (;;) {
+        response = await fetch('/api/email/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            leadId,
+            to: toTrim,
+            subject: subjectTrim,
+            body: bodyTrim,
+            documentIds: selectedIds,
+            force,
+            resendFromLogId: prefill?.resendFromLogId,
+          }),
+        });
 
-      const data = await res.json().catch(() => null);
+        data = await response.json().catch(() => null);
 
-      if (!res.ok || !data?.ok) {
+        if (response.status === 409 && data?.code === 'DUPLICATE_RECENT_SEND') {
+          if (window.confirm(String(data.error) + '\nSend anyway?')) {
+            force = true;
+            continue;
+          }
+          setError(String(data.error));
+          return;
+        }
+
+        break;
+      }
+
+      if (!response.ok || !data?.ok) {
         setError(data?.error ?? 'Failed to send email');
         return;
       }
 
       // Success: close panel and refresh lead page so activity feed updates
       setSentMsg('Email sent successfully.');
-      closePanel();
+      setOpen(false);
       router.refresh();
     } catch (e: any) {
       setError(e?.message || 'Failed to send email');
