@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { format } from 'date-fns';
 
 type Doc = { id: string; filename: string };
 
@@ -27,6 +28,9 @@ export default function EmailSlideOver(props: {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sentMsg, setSentMsg] = useState<string | null>(null);
+  const [lastSentByDocumentId, setLastSentByDocumentId] = useState<
+    Record<string, { sent_at: string; to_email: string | null }>
+  >({});
 
   // Keep "To" synced when opening a different lead
   useEffect(() => {
@@ -117,6 +121,32 @@ export default function EmailSlideOver(props: {
       setBusy(false);
     }
   }
+
+  useEffect(() => {
+    if (!leadId || !open) return;
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const res = await fetch(`/api/leads/${leadId}/document-last-sent`);
+
+        if (!res.ok) return;
+
+        const data = await res.json();
+
+        if (!cancelled) {
+          setLastSentByDocumentId(data?.lastSentByDocumentId ?? {});
+        }
+      } catch {
+        // Last-sent UI is optional enhancement
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [leadId, open]);
 
   return (
     <>
@@ -255,6 +285,25 @@ export default function EmailSlideOver(props: {
                                     Download
                                   </a>
                                 </div>
+                                {/* Last sent info */}
+                                {lastSentByDocumentId[doc.id] ? (
+                                  <div className="mt-1 text-xs text-white/50">
+                                    {(() => {
+                                      const info = lastSentByDocumentId[doc.id];
+                                      if (!info?.sent_at) return 'Last sent: —';
+
+                                      try {
+                                        const d = new Date(info.sent_at);
+                                        const formatted = format(d, 'MMM d, yyyy h:mm a');
+                                        return `Last sent: ${formatted}${
+                                          info.to_email ? ` to ${info.to_email}` : ''
+                                        }`;
+                                      } catch {
+                                        return `Last sent: ${info.sent_at}`;
+                                      }
+                                    })()}
+                                  </div>
+                                ) : null}
                               </div>
                             </label>
                           );
