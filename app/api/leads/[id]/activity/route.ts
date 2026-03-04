@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { jsonOk, jsonErr, safeErrorMessage } from '@/lib/api/response';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
 type ActivityRow = {
@@ -14,22 +14,24 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
 
   const supabase = await createSupabaseServerClient();
   const { data: userData } = await supabase.auth.getUser();
-
   if (!userData?.user) {
-    return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
+    return jsonErr('Unauthorized', { status: 401, code: 'UNAUTHORIZED' });
   }
 
-  const { data, error } = await supabase
-    .from('lead_activity')
-    .select('id,type,body,created_at,user_id')
-    .eq('lead_id', leadId)
-    .order('created_at', { ascending: false });
+  try {
+    const { data, error } = await supabase
+      .from('lead_activity')
+      .select('id,type,body,created_at,user_id')
+      .eq('lead_id', leadId)
+      .order('created_at', { ascending: false });
 
-  if (error) {
-    return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
+    if (error) {
+      return jsonErr(safeErrorMessage(error), { status: 400, code: 'VALIDATION_ERROR' });
+    }
+
+    const rows = (data ?? []) as ActivityRow[];
+    return jsonOk(rows);
+  } catch (e) {
+    return jsonErr(safeErrorMessage(e), { status: 500, code: 'INTERNAL_ERROR' });
   }
-
-  const rows = (data ?? []) as ActivityRow[];
-  // No profiles join, so just return user_id and body
-  return NextResponse.json({ ok: true, items: rows });
 }

@@ -103,6 +103,33 @@ function ActivityItem(props: { item: LeadActivityDisplayRow }) {
   );
 }
 
+// Email log fetch helper
+async function fetchEmailLogRows(supabase: any, leadId: string): Promise<EmailLogRow[]> {
+  const { data, error } = await supabase
+    .from('document_email_log')
+    .select('id,sent_at,to_email,subject,status,error,provider_message_id,document_ids,sent_by')
+    .eq('lead_id', leadId)
+    .order('sent_at', { ascending: false })
+    .limit(25);
+  if (error) {
+    console.error('[LeadDetail] email log query error:', error);
+    return [];
+  }
+  return Array.isArray(data)
+    ? data.map((row: any) => ({
+        id: String(row.id),
+        sent_at: row.sent_at ?? null,
+        to_email: row.to_email ?? null,
+        subject: row.subject ?? null,
+        status: row.status ?? null,
+        error: row.error ?? null,
+        provider_message_id: row.provider_message_id ?? null,
+        sent_by: row.sent_by ?? null,
+        document_ids: row.document_ids ?? null,
+      }))
+    : [];
+}
+
 export default async function LeadDetailPage({ params }: PageProps) {
   const { id: leadId } = await params;
 
@@ -170,6 +197,8 @@ export default async function LeadDetailPage({ params }: PageProps) {
     );
   }
 
+  const leadEmail = lead && typeof lead.email === 'string' ? lead.email : null;
+
   // Documents query for EmailSlideOver
   const { data: docsRaw, error: docsErr } = await supabase
     .from('documents')
@@ -188,7 +217,22 @@ export default async function LeadDetailPage({ params }: PageProps) {
       }))
     : [];
 
-  const leadEmail = (lead as any)?.email ? String((lead as any).email) : null;
+  // Email History fetch
+  const emailLogRows = await fetchEmailLogRows(supabase, leadId);
+  const docNameById: Record<string, string> = {};
+  for (const doc of documents) {
+    docNameById[doc.id] = doc.filename;
+  }
+  // Prepare email history items for client panel
+  const emailHistoryItems = emailLogRows.map((row) => ({
+    ...row,
+    attachments: Array.isArray(row.document_ids)
+      ? row.document_ids.map((id) => ({
+          id: String(id),
+          filename: docNameById[String(id)] ?? String(id).slice(0, 8),
+        }))
+      : [],
+  }));
 
   // View logging (10-min dedupe). Never blocks rendering.
   // View dedupe query and insert
@@ -294,6 +338,26 @@ export default async function LeadDetailPage({ params }: PageProps) {
   ]);
   const followupDate = formatDateInput(followupDateRaw);
 
+  // Assigned user label
+  let assignedUserLabel = 'Unassigned';
+  if (lead.assigned_user_id) {
+    const { data: assignedUser } = await supabase
+      .from('profiles')
+      .select('full_name,email')
+      .eq('id', lead.assigned_user_id)
+      .maybeSingle();
+    if (assignedUser) {
+      assignedUserLabel = assignedUser.full_name || assignedUser.email || 'Unassigned';
+    }
+  }
+  // Check admin
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('is_admin')
+    .eq('id', user.id)
+    .maybeSingle();
+  const isAdmin = !!profile?.is_admin;
+
   return (
     <div className="p-6 space-y-8">
       <div className="flex items-start justify-between gap-4">
@@ -338,23 +402,13 @@ export default async function LeadDetailPage({ params }: PageProps) {
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
-          <div className="text-lg font-semibold">Add Note</div>
-
-          <form action={addNote} className="mt-4 space-y-3">
-            <textarea
-              name="note"
-              rows={4}
-              placeholder="Write a note…"
-              className="w-full rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-white outline-none focus:border-white/20"
-            />
-            <button
-              type="submit"
-              className="inline-flex items-center justify-center rounded-xl border border-white/10 bg-white/[0.06] px-4 py-2 text-sm font-medium text-white hover:bg-white/[0.09]"
-            >
-              Save Note
-            </button>
-          </form>
+        <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-6 mb-4">
+          <div className="text-sm font-semibold mb-1">Assigned to</div>
+          {isAdmin ? (
+            <AssigneeSelectClient leadId={leadId} assignedUserId={lead.assigned_user_id ?? null} />
+          ) : (
+            <div className="text-sm text-white/80">{assignedUserLabel}</div>
+          )}
         </div>
 
         <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
@@ -420,3 +474,18 @@ export default async function LeadDetailPage({ params }: PageProps) {
     </div>
   );
 }
+
+type EmailLogRow = {
+  id: string;
+  sent_at: string | null;
+  to_email: string | null;
+  subject: string | null;
+  status: string | null;
+  error: string | null;
+  provider_message_id: string | null;
+  sent_by: string | null;
+  document_ids: unknown[] | null;
+};
+
+import EmailHistoryPanelClient from '@/components/leads/EmailHistoryPanelClient';
+import AssigneeSelectClient from '@/components/leads/AssigneeSelectClient';

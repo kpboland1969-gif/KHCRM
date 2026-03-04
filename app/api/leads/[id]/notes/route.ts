@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
+import { jsonOk, jsonErr, safeErrorMessage } from '@/lib/api/response';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
 function isUuid(str: string) {
@@ -9,12 +10,12 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
   const { id } = await context.params;
   const leadId = id;
   if (!isUuid(leadId)) {
-    return NextResponse.json({ ok: false, error: 'Invalid lead id' }, { status: 400 });
+    return jsonErr('Invalid lead id', { status: 400, code: 'VALIDATION_ERROR' });
   }
 
   const { message } = await req.json();
   if (!message || typeof message !== 'string' || !message.trim() || message.length > 2000) {
-    return NextResponse.json({ ok: false, error: 'Invalid message' }, { status: 400 });
+    return jsonErr('Note body is required', { status: 400, code: 'VALIDATION_ERROR' });
   }
 
   const supabase = await createSupabaseServerClient();
@@ -23,7 +24,7 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
     error: userError,
   } = await supabase.auth.getUser();
   if (userError || !user) {
-    return NextResponse.json({ ok: false, error: 'Not authenticated' }, { status: 401 });
+    return jsonErr('Unauthorized', { status: 401, code: 'UNAUTHORIZED' });
   }
 
   // Confirm lead is accessible (RLS enforced)
@@ -32,24 +33,29 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
     .select('id')
     .eq('id', leadId)
     .single();
-
   if (leadError || !lead) {
-    return NextResponse.json({ ok: false, error: 'Not found' }, { status: 404 });
+    return jsonErr('Lead not found', { status: 404, code: 'NOT_FOUND' });
   }
 
   // Insert note
-  const { error: insertError } = await supabase.from('lead_activity').insert([
-    {
-      lead_id: leadId,
-      type: 'note',
-      body: message.trim(),
-      user_id: user.id,
-    },
-  ]);
-
-  if (insertError) {
-    return NextResponse.json({ ok: false, error: 'Failed to add note' }, { status: 500 });
+  try {
+    const { error: insertError } = await supabase.from('lead_activity').insert([
+      {
+        lead_id: leadId,
+        type: 'note',
+        body: message.trim(),
+        user_id: user.id,
+      },
+    ]);
+    if (insertError) {
+      // Map forbidden errors if possible
+      if (insertError.message && insertError.message.toLowerCase().includes('rls')) {
+        return jsonErr('Forbidden', { status: 403, code: 'FORBIDDEN' });
+      }
+      return jsonErr(safeErrorMessage(insertError), { status: 500, code: 'INTERNAL_ERROR' });
+    }
+    return jsonOk({});
+  } catch (e) {
+    return jsonErr(safeErrorMessage(e), { status: 500, code: 'INTERNAL_ERROR' });
   }
-
-  return NextResponse.json({ ok: true });
 }
