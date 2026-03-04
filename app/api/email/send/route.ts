@@ -34,6 +34,21 @@ export async function POST(req: NextRequest) {
     return jsonErr('Unauthorized', { status: 401, code: 'UNAUTHORIZED' });
   }
 
+  // Rate limit per user
+  const { rateLimit } = await import('@/lib/api/rateLimit');
+  const key = `email_send:${user.id}`;
+  const rl = rateLimit({ key, limit: 10, windowMs: 60_000 });
+  if (!rl.allowed) {
+    const res = jsonErr('Too many email send attempts. Please wait and try again.', {
+      status: 429,
+      code: 'RATE_LIMITED',
+    });
+    if (rl.retryAfterSeconds) {
+      res.headers.set('Retry-After', rl.retryAfterSeconds.toString());
+    }
+    return res;
+  }
+
   const payload = (await req.json().catch(() => null)) as any;
   if (!payload) {
     return jsonErr('Invalid JSON body', { status: 400, code: 'VALIDATION_ERROR' });

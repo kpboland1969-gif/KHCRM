@@ -12,6 +12,30 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
   }
 
   const userId = userData.user.id;
+
+  // Rate limiting (Phase 10.4)
+  const { rateLimit } = await import('@/lib/api/rateLimit');
+  const perLeadKey = `lead_view:${userId}:${leadId}`;
+  const globalKey = `lead_view:${userId}`;
+  const perLead = rateLimit({ key: perLeadKey, limit: 3, windowMs: 60_000 });
+  const global = rateLimit({ key: globalKey, limit: 30, windowMs: 60_000 });
+  if (!perLead.allowed || !global.allowed) {
+    const retryAfterSeconds = Math.max(
+      perLead.retryAfterSeconds ?? 1,
+      global.retryAfterSeconds ?? 1,
+    );
+    const res = NextResponse.json(
+      {
+        ok: false,
+        error: 'Too many view log attempts. Please wait and try again.',
+        code: 'RATE_LIMITED',
+      },
+      { status: 429 },
+    );
+    res.headers.set('Retry-After', retryAfterSeconds.toString());
+    return res;
+  }
+
   const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
 
   const { data: lastView, error: lastViewErr } = await supabase

@@ -1,9 +1,8 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
-import { useRef } from 'react';
 
 type Doc = { id: string; filename: string };
 
@@ -61,14 +60,11 @@ export default function EmailSlideOver(props: EmailSlideOverProps) {
       return;
     }
     if (!prefill || !prefillKey) return;
-
     if (lastPrefillKeyRef.current === prefillKey) return;
     lastPrefillKeyRef.current = prefillKey;
-
     if (prefill.to !== undefined) setTo(prefill.to);
     if (prefill.subject !== undefined) setSubject(prefill.subject);
     if (prefill.body !== undefined) setBody(prefill.body);
-
     if (Array.isArray(prefill.documentIds)) {
       const docsSet = new Set(documents.map((d) => d.id));
       setSelectedIds(prefill.documentIds.filter((id) => docsSet.has(id)));
@@ -111,11 +107,9 @@ export default function EmailSlideOver(props: EmailSlideOverProps) {
   async function sendEmail() {
     setError(null);
     setSentMsg(null);
-
     const toTrim = to.trim();
     const subjectTrim = subject.trim();
     const bodyTrim = body.trim();
-
     if (!toTrim || !toTrim.includes('@')) {
       setError('Lead email is missing or invalid.');
       return;
@@ -132,12 +126,14 @@ export default function EmailSlideOver(props: EmailSlideOverProps) {
       setError('Select at least one document to attach.');
       return;
     }
-
     setBusy(true);
     let force = false;
     try {
+      const { getRetryAfterSeconds, parseApiResponse, formatApiError } =
+        await import('@/lib/api/client');
       let response;
-      let data;
+      let parsed;
+      let retryAfterSeconds;
       for (;;) {
         response = await fetch('/api/email/send', {
           method: 'POST',
@@ -152,27 +148,29 @@ export default function EmailSlideOver(props: EmailSlideOverProps) {
             resendFromLogId: prefill?.resendFromLogId,
           }),
         });
-
-        data = await response.json().catch(() => null);
-
-        if (response.status === 409 && data?.code === 'DUPLICATE_RECENT_SEND') {
-          if (window.confirm(String(data.error) + '\nSend anyway?')) {
+        retryAfterSeconds = getRetryAfterSeconds(response);
+        parsed = await parseApiResponse(response);
+        if (response.status === 409 && parsed?.code === 'DUPLICATE_RECENT_SEND') {
+          if (window.confirm((parsed.error || 'Duplicate send detected.') + '\nSend anyway?')) {
             force = true;
             continue;
           }
-          setError(String(data.error));
+          setError(parsed.error || 'Duplicate send detected.');
           return;
         }
-
         break;
       }
-
-      if (!response.ok || !data?.ok) {
-        setError(data?.error ?? 'Failed to send email');
+      if (!response.ok || !parsed?.ok) {
+        setError(
+          formatApiError({
+            error: parsed?.error,
+            code: parsed?.code,
+            requestId: parsed?.requestId,
+            retryAfterSeconds,
+          }) + (parsed?.requestId ? `\nRequest ID: ${parsed.requestId}` : ''),
+        );
         return;
       }
-
-      // Success: close panel and refresh lead page so activity feed updates
       setSentMsg('Email sent successfully.');
       setOpen(false);
       router.refresh();
@@ -181,29 +179,24 @@ export default function EmailSlideOver(props: EmailSlideOverProps) {
     } finally {
       setBusy(false);
     }
+    // Last-sent UI is optional enhancement
   }
 
   useEffect(() => {
-    if (!leadId || !open) return;
-
     let cancelled = false;
-
     (async () => {
       try {
         const res = await fetch(`/api/leads/${leadId}/document-last-sent`);
-
         if (!res.ok) return;
-
         const data = await res.json();
-
         if (!cancelled) {
           setLastSentByDocumentId(data?.lastSentByDocumentId ?? {});
         }
       } catch {
-        // Last-sent UI is optional enhancement
+        // Intentionally ignore errors (last-sent info is optional)
+        return;
       }
     })();
-
     return () => {
       cancelled = true;
     };
@@ -227,7 +220,6 @@ export default function EmailSlideOver(props: EmailSlideOverProps) {
       >
         Email Documents
       </button>
-
       {open ? (
         <div className="fixed inset-0 z-50">
           {/* Backdrop */}
@@ -236,7 +228,6 @@ export default function EmailSlideOver(props: EmailSlideOverProps) {
             onClick={() => setOpen(false)}
             aria-hidden="true"
           />
-
           {/* Panel */}
           <div className="absolute right-0 top-0 h-full w-full max-w-xl border-l border-white/10 bg-[#0b0f19] shadow-2xl">
             <div className="flex h-full flex-col">
@@ -256,21 +247,53 @@ export default function EmailSlideOver(props: EmailSlideOverProps) {
                   Close
                 </button>
               </div>
-
               {/* Body */}
               <div className="flex-1 overflow-auto p-5">
                 {error ? (
                   <div className="mb-4 rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-200">
-                    {error}
+                    {(() => {
+                      // Extract requestId and Retry-After from error string
+                      const match = error.match(/Request ID: ([\w-]+)/);
+                      const requestId = match ? match[1] : null;
+                      const retryMatch = error.match(/Try again in (\d+) seconds/);
+                      const retryAfter = retryMatch ? retryMatch[1] : null;
+                      return (
+                        <>
+                          <div>{error.replace(/\nRequest ID: [\w-]+/, '')}</div>
+                          {retryAfter ? (
+                            <div className="mt-1 text-xs text-yellow-200">
+                              Retry after: {retryAfter} seconds
+                            </div>
+                          ) : null}
+                          {requestId ? (
+                            <div className="mt-2 text-xs text-white/70 flex items-center gap-2">
+                              Request ID: <span className="font-mono">{requestId}</span>
+                              <button
+                                type="button"
+                                className="px-2 py-1 rounded bg-white/10 text-xs text-white hover:bg-white/20"
+                                onClick={async () => {
+                                  try {
+                                    await navigator.clipboard.writeText(requestId);
+                                  } catch {
+                                    // Intentionally ignore clipboard failures
+                                    return;
+                                  }
+                                }}
+                              >
+                                Copy
+                              </button>
+                            </div>
+                          ) : null}
+                        </>
+                      );
+                    })()}
                   </div>
                 ) : null}
-
                 {sentMsg ? (
                   <div className="mb-4 rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-3 text-sm text-emerald-200">
                     {sentMsg}
                   </div>
                 ) : null}
-
                 <div className="space-y-4">
                   <div>
                     <div className="text-sm font-medium text-white/80">To</div>
@@ -284,7 +307,6 @@ export default function EmailSlideOver(props: EmailSlideOverProps) {
                       Prefilled from the lead. Editable if needed.
                     </div>
                   </div>
-
                   <div>
                     <div className="text-sm font-medium text-white/80">Subject</div>
                     <input
@@ -294,7 +316,6 @@ export default function EmailSlideOver(props: EmailSlideOverProps) {
                       className="mt-2 h-10 w-full rounded-xl border border-white/10 bg-white/[0.03] px-3 text-sm text-white outline-none focus:border-white/20"
                     />
                   </div>
-
                   <div>
                     <div className="text-sm font-medium text-white/80">Message</div>
                     <textarea
@@ -305,13 +326,11 @@ export default function EmailSlideOver(props: EmailSlideOverProps) {
                       className="mt-2 w-full rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-white outline-none focus:border-white/20"
                     />
                   </div>
-
                   <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
                     <div className="flex items-baseline justify-between gap-4">
                       <div className="text-sm font-semibold text-white/90">Attachments</div>
                       <div className="text-xs text-white/50">{selectedDocs.length} selected</div>
                     </div>
-
                     <div className="mt-3 max-h-[260px] overflow-auto rounded-xl border border-white/10">
                       {documents.length === 0 ? (
                         <div className="p-4 text-sm text-white/70">
@@ -352,7 +371,6 @@ export default function EmailSlideOver(props: EmailSlideOverProps) {
                                     {(() => {
                                       const info = lastSentByDocumentId[doc.id];
                                       if (!info?.sent_at) return 'Last sent: —';
-
                                       try {
                                         const d = new Date(info.sent_at);
                                         const formatted = format(d, 'MMM d, yyyy h:mm a');
@@ -371,7 +389,6 @@ export default function EmailSlideOver(props: EmailSlideOverProps) {
                         })
                       )}
                     </div>
-
                     {selectedDocs.length > 0 ? (
                       <div className="mt-3 text-xs text-white/60">
                         Selected:{' '}
@@ -383,7 +400,6 @@ export default function EmailSlideOver(props: EmailSlideOverProps) {
                   </div>
                 </div>
               </div>
-
               {/* Footer */}
               <div className="border-t border-white/10 p-5">
                 <div className="flex gap-2">
