@@ -1,20 +1,14 @@
-"use client";
-import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
-import { LeadRow } from "@/lib/types/leads";
+'use client';
 
-export type Props = {
-  lead: LeadRow;
-};
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useState, useTransition, type ChangeEvent, type FormEvent } from 'react';
 
-
-
-import Link from "next/link";
-
-
-import { Field, ReadOnlyField } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
-import { Select } from "@/components/ui/select";
+import { Field, ReadOnlyField } from '@/components/ui/field';
+import { Input } from '@/components/ui/input';
+import { Select } from '@/components/ui/select';
+import { LeadRow } from '@/lib/types/leads';
+import { formatApiError, getRetryAfterSeconds, parseApiResponse } from '@/lib/api/client';
 
 type EditLeadFormState = {
   company_name: string;
@@ -30,49 +24,81 @@ type EditLeadFormState = {
   zip: string;
   industry: string;
   status: string;
-  follow_up_date: string; // YYYY-MM-DD
+  follow_up_date: string;
 };
 
-export default function EditLeadFormClient({ lead }: Props) {
-  const router = useRouter();
-  const [form, setForm] = useState<EditLeadFormState>({
-    company_name: lead.company_name ?? "",
-    contact_person: lead.contact_person ?? "",
-    title: lead.title ?? "",
-    phone: lead.phone ?? "",
-    email: lead.email ?? "",
-    website: lead.website ?? "",
-    address1: lead.address1 ?? "",
-    address2: lead.address2 ?? "",
-    city: lead.city ?? "",
-    state: lead.state ?? "",
-    zip: lead.zip ?? "",
-    industry: lead.industry ?? "",
-    status: lead.status ?? "",
-    follow_up_date: lead.follow_up_date ? lead.follow_up_date.slice(0, 10) : "",
-  });
-  const [saving, startTransition] = useTransition();
-  const [error, setError] = useState<string | null>(null);
+type UiError = {
+  message: string;
+  requestId?: string;
+  retryAfterSeconds?: number | null;
+  code?: string;
+};
 
-  function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) {
+export type EditLeadFormClientProps = {
+  lead: LeadRow;
+};
+
+export default function EditLeadFormClient({ lead }: EditLeadFormClientProps) {
+  const router = useRouter();
+
+  const [form, setForm] = useState<EditLeadFormState>({
+    company_name: lead.company_name ?? '',
+    contact_person: lead.contact_person ?? '',
+    title: lead.title ?? '',
+    phone: lead.phone ?? '',
+    email: lead.email ?? '',
+    website: lead.website ?? '',
+    address1: lead.address1 ?? '',
+    address2: lead.address2 ?? '',
+    city: lead.city ?? '',
+    state: lead.state ?? '',
+    zip: lead.zip ?? '',
+    industry: lead.industry ?? '',
+    status: lead.status ?? '',
+    follow_up_date: lead.follow_up_date ? lead.follow_up_date.slice(0, 10) : '',
+  });
+
+  const [saving, startTransition] = useTransition();
+  const [error, setError] = useState<UiError | null>(null);
+
+  function handleChange(e: ChangeEvent<HTMLInputElement>) {
     const { name, value } = e.target;
     setForm((f) => ({ ...f, [name]: value }));
   }
 
-  async function handleSubmit(e: React.FormEvent) {
+  function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
+
     startTransition(async () => {
-      const res = await fetch(`/api/leads/${lead.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
-      });
-      const result = await res.json();
-      if (result.ok) {
+      try {
+        const res = await fetch(`/api/leads/${lead.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(form),
+        });
+
+        const retryAfterSeconds = getRetryAfterSeconds(res);
+        const parsed = await parseApiResponse<any>(res);
+
+        if (!res.ok || !parsed.ok) {
+          setError({
+            message: formatApiError({
+              error: parsed.error,
+              code: parsed.code,
+              requestId: parsed.requestId,
+              retryAfterSeconds,
+            }),
+            requestId: parsed.requestId,
+            retryAfterSeconds,
+            code: parsed.code,
+          });
+          return;
+        }
+
         router.push(`/dashboard/leads/${lead.id}`);
-      } else {
-        setError(result.error || "Failed to update lead");
+      } catch (err: any) {
+        setError({ message: err?.message || 'Failed to update lead' });
       }
     });
   }
@@ -81,78 +107,144 @@ export default function EditLeadFormClient({ lead }: Props) {
     <form onSubmit={handleSubmit}>
       <div className="max-w-3xl space-y-6">
         <Field label="Company Name">
-          <Input name="company_name" value={form.company_name} onChange={handleChange} required disabled={saving} />
+          <Input
+            name="company_name"
+            value={form.company_name}
+            onChange={handleChange}
+            required
+            disabled={saving}
+          />
         </Field>
+
         <Field label="Contact Person">
-          <Input name="contact_person" value={form.contact_person} onChange={handleChange} required disabled={saving} />
+          <Input
+            name="contact_person"
+            value={form.contact_person}
+            onChange={handleChange}
+            required
+            disabled={saving}
+          />
         </Field>
+
         <Field label="Title">
           <Input name="title" value={form.title} onChange={handleChange} disabled={saving} />
         </Field>
+
         <Field label="Phone">
           <Input name="phone" value={form.phone} onChange={handleChange} disabled={saving} />
         </Field>
+
         <Field label="Email">
           <Input name="email" value={form.email} onChange={handleChange} disabled={saving} />
         </Field>
+
         <Field label="Website">
           <Input name="website" value={form.website} onChange={handleChange} disabled={saving} />
         </Field>
+
         <Field label="Address 1">
           <Input name="address1" value={form.address1} onChange={handleChange} disabled={saving} />
         </Field>
+
         <Field label="Address 2">
           <Input name="address2" value={form.address2} onChange={handleChange} disabled={saving} />
         </Field>
+
         <Field label="City">
           <Input name="city" value={form.city} onChange={handleChange} disabled={saving} />
         </Field>
+
         <Field label="State">
           <Input name="state" value={form.state} onChange={handleChange} disabled={saving} />
         </Field>
+
         <Field label="Zip">
           <Input name="zip" value={form.zip} onChange={handleChange} disabled={saving} />
         </Field>
+
         <Field label="Industry">
           <Select
             value={form.industry}
             onChange={(v) => setForm((f) => ({ ...f, industry: v }))}
             options={[
-              { value: "", label: "Select industry" },
-              { value: "construction", label: "Construction" },
-              { value: "subcontractor", label: "Subcontractor" },
-              { value: "manufacturing", label: "Manufacturing" },
-              { value: "wholesale", label: "Wholesale" },
+              { value: '', label: 'Select industry' },
+              { value: 'construction', label: 'Construction' },
+              { value: 'subcontractor', label: 'Subcontractor' },
+              { value: 'manufacturing', label: 'Manufacturing' },
+              { value: 'wholesale', label: 'Wholesale' },
             ]}
             disabled={saving}
           />
         </Field>
+
         <Field label="Status">
           <Select
             value={form.status}
             onChange={(v) => setForm((f) => ({ ...f, status: v }))}
             options={[
-              { value: "", label: "Select status" },
-              { value: "new_lead", label: "New Lead" },
-              { value: "email_campaign", label: "Email Campaign" },
-              { value: "warm_lead", label: "Warm Lead" },
-              { value: "assessment_stage", label: "Assessment Stage" },
-              { value: "onboarding", label: "Onboarding" },
-              { value: "client", label: "Client" },
+              { value: '', label: 'Select status' },
+              { value: 'new_lead', label: 'New Lead' },
+              { value: 'email_campaign', label: 'Email Campaign' },
+              { value: 'warm_lead', label: 'Warm Lead' },
+              { value: 'assessment_stage', label: 'Assessment Stage' },
+              { value: 'onboarding', label: 'Onboarding' },
+              { value: 'client', label: 'Client' },
             ]}
             disabled={saving}
           />
         </Field>
+
         <Field label="Follow Up Date">
-          <Input type="date" name="follow_up_date" value={form.follow_up_date} onChange={handleChange} disabled={saving} />
+          <Input
+            type="date"
+            name="follow_up_date"
+            value={form.follow_up_date}
+            onChange={handleChange}
+            disabled={saving}
+          />
         </Field>
+
         <ReadOnlyField label="Assigned User" value={lead.assigned_user_id} />
         <ReadOnlyField label="Created At" value={lead.created_at} />
         <ReadOnlyField label="Updated At" value={lead.updated_at} />
         <ReadOnlyField label="Lead ID" value={lead.id} />
-        {error && <div style={{ color: "red" }}>{error}</div>}
-        <div className="flex gap-2 mt-4">
-          <button type="submit" disabled={saving} className="btn btn-primary">Save</button>
+
+        {error ? (
+          <div className="mb-2 rounded-xl border border-red-500/20 bg-red-500/10 p-2 text-xs text-red-200">
+            <div>{error.message}</div>
+
+            {error.code === 'RATE_LIMITED' && error.retryAfterSeconds ? (
+              <div className="mt-1 text-xs text-yellow-200">
+                Retry after: {error.retryAfterSeconds} seconds
+              </div>
+            ) : null}
+
+            {error.requestId ? (
+              <div className="mt-2 flex items-center gap-2 text-xs text-white/70">
+                Request ID: <span className="font-mono">{error.requestId}</span>
+                <button
+                  type="button"
+                  className="rounded bg-white/10 px-2 py-1 text-xs text-white hover:bg-white/20"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(error.requestId!);
+                    } catch {
+                      return;
+                    }
+                  }}
+                >
+                  Copy
+                </button>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
+        <div className="mt-4 flex gap-2">
+          <button type="submit" disabled={saving} className="btn btn-primary">
+            Save
+          </button>
+
           <Link
             href={`/dashboard/leads/${lead.id}`}
             className="inline-flex"

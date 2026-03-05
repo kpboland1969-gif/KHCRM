@@ -1,6 +1,13 @@
-"use client";
+'use client';
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from 'react';
+
+type UiError = {
+  message: string;
+  requestId?: string;
+  retryAfterSeconds?: number | null;
+  code?: string;
+};
 
 type Item = {
   id: string;
@@ -13,7 +20,7 @@ type Item = {
 };
 
 function prettyType(t: string) {
-  return t.replaceAll("_", " ");
+  return t.replaceAll('_', ' ');
 }
 
 function formatDate(iso: string) {
@@ -29,10 +36,11 @@ export default function LeadActivityFeedClient({
   initialItems: Item[];
 }) {
   const [items, setItems] = useState<Item[]>(initialItems);
+  const [error, setError] = useState<UiError | null>(null);
 
   // Log a view (server-side throttled)
   useEffect(() => {
-    void fetch(`/api/leads/${leadId}/view`, { method: "POST" }).catch(() => {});
+    void fetch(`/api/leads/${leadId}/view`, { method: 'POST' }).catch(() => {});
   }, [leadId]);
 
   // Refresh hook (note form triggers this event)
@@ -40,22 +48,37 @@ export default function LeadActivityFeedClient({
     function onRefresh(e: Event) {
       const ce = e as CustomEvent<{ leadId: string }>;
       if (ce.detail?.leadId !== leadId) return;
-
-      void fetch(`/api/leads/${leadId}/activity`)
-        .then(async (r) => {
-          if (!r.ok) return null;
-          return (await r.json()) as { ok: true; items: Item[] };
-        })
-        .then((payload) => {
-          if (!payload) return;
-          setItems(payload.items);
-        })
-        .catch(() => {});
+      (async () => {
+        try {
+          const { parseApiResponse, getRetryAfterSeconds, formatApiError } =
+            await import('@/lib/api/client');
+          const res = await fetch(`/api/leads/${leadId}/activity`);
+          const retryAfterSeconds = getRetryAfterSeconds(res);
+          const parsed = await parseApiResponse<Item[]>(res);
+          if (!res.ok || !parsed.ok) {
+            setError({
+              message: formatApiError({
+                error: parsed.error,
+                code: parsed.code,
+                requestId: parsed.requestId,
+                retryAfterSeconds,
+              }),
+              requestId: parsed.requestId,
+              retryAfterSeconds,
+              code: parsed.code,
+            });
+            return;
+          }
+          setItems(parsed.data ?? []);
+          setError(null);
+        } catch (e: any) {
+          setError({ message: e?.message || 'Failed to load activity' });
+        }
+      })();
     }
-
-    window.addEventListener("khcrm:activity:refresh", onRefresh as EventListener);
+    window.addEventListener('khcrm:activity:refresh', onRefresh as EventListener);
     return () => {
-      window.removeEventListener("khcrm:activity:refresh", onRefresh as EventListener);
+      window.removeEventListener('khcrm:activity:refresh', onRefresh as EventListener);
     };
   }, [leadId]);
 
@@ -63,6 +86,35 @@ export default function LeadActivityFeedClient({
 
   return (
     <div className="max-h-[520px] overflow-auto rounded-xl border border-white/10">
+      {error ? (
+        <div className="mb-2 rounded-xl border border-red-500/20 bg-red-500/10 p-2 text-xs text-red-200">
+          <div>{error.message}</div>
+          {error.code === 'RATE_LIMITED' && error.retryAfterSeconds ? (
+            <div className="mt-1 text-xs text-yellow-200">
+              Retry after: {error.retryAfterSeconds} seconds
+            </div>
+          ) : null}
+          {error.requestId ? (
+            <div className="mt-2 text-xs text-white/70 flex items-center gap-2">
+              Request ID: <span className="font-mono">{error.requestId}</span>
+              <button
+                type="button"
+                className="px-2 py-1 rounded bg-white/10 text-xs text-white hover:bg-white/20"
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(error.requestId!);
+                  } catch {
+                    // Intentionally ignore clipboard failures
+                    return;
+                  }
+                }}
+              >
+                Copy
+              </button>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
       {content.length === 0 ? (
         <div className="p-4 text-sm text-white/70">No activity yet.</div>
       ) : (
@@ -81,11 +133,10 @@ export default function LeadActivityFeedClient({
                     </pre>
                   ) : null}
                 </div>
-
                 <div className="shrink-0 text-right">
-                  <div className="text-xs text-white/70">{a.username ?? "—"}</div>
+                  <div className="text-xs text-white/70">{a.username ?? '—'}</div>
                   <div className="mt-1 text-xs text-white/50">
-                    {a.created_at ? formatDate(a.created_at) : "—"}
+                    {a.created_at ? formatDate(a.created_at) : '—'}
                   </div>
                 </div>
               </div>
