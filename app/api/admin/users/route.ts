@@ -1,45 +1,31 @@
+import { requireAdmin } from '@/lib/api/adminGuard';
+import { jsonOk, jsonErr, safeErrorMessage } from '@/lib/api/response';
+
 import { NextRequest } from 'next/server';
-import { jsonOk, jsonErr, safeErrorMessage } from '../../../../lib/api/response';
 import { createSupabaseServerClient } from '@/lib/supabase-server';
 
-// Helper to check admin status
-async function requireAdmin(req: NextRequest) {
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser();
-  if (error || !user) return null;
-  // Prefer is_admin, fallback to role
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('id, full_name, username, role, is_admin, created_at')
-    .eq('id', user.id)
-    .single();
-  if (!profile || !(profile.is_admin || profile.role === 'admin')) return null;
-  return { user, profile };
-}
-
-export async function GET(req: NextRequest) {
+export async function GET() {
   try {
-    const admin = await requireAdmin(req);
-    if (!admin) return jsonErr('Not authorized', { status: 403 });
-    const supabase = await createSupabaseServerClient();
-    // Get all profiles
-    const { data: profiles, error } = await supabase
+    const guard = await requireAdmin();
+    if (!guard.ok) return guard.res;
+
+    const { supabase } = guard;
+
+    const { data, error } = await supabase
       .from('profiles')
-      .select('id, full_name, username, role, is_admin, created_at, email');
-    if (error) return jsonErr(safeErrorMessage(error), { status: 500 });
-    // TODO: Optionally fetch emails from auth.users if not in profiles
-    return jsonOk({ users: profiles });
-  } catch (e: any) {
-    return jsonErr(safeErrorMessage(e), { status: 500 });
+      .select('id,email,full_name,username,role,is_admin,disabled,created_at')
+      .order('created_at', { ascending: false });
+
+    if (error) return jsonErr(safeErrorMessage(error), { status: 500, code: 'DB_ERROR' });
+    return jsonOk(data ?? []);
+  } catch (e) {
+    return jsonErr(safeErrorMessage(e), { status: 500, code: 'UNKNOWN' });
   }
 }
 
 export async function POST(req: NextRequest) {
   try {
-    const admin = await requireAdmin(req);
+    const admin = await requireAdmin();
     if (!admin) return jsonErr('Not authorized', { status: 403 });
     const body = await req.json();
     const { email, password, fullName, role } = body;

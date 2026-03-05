@@ -1,10 +1,3 @@
-function getActorLabel(params: { actorId: string | null | undefined; currentUserId: string }) {
-  const { actorId, currentUserId } = params;
-
-  if (!actorId) return 'System';
-  if (actorId === currentUserId) return 'You';
-  return `User ${actorId.slice(0, 8)}`;
-}
 import 'server-only';
 
 import Link from 'next/link';
@@ -18,8 +11,18 @@ import {
   insertLeadNote,
   logLeadViewIfNeededServer,
   logServerError,
-  type LeadActivityDisplayRow,
 } from '@/lib/leads/activity.server';
+import type { LeadActivityDisplayRow } from '@/lib/leads/activity.server';
+import EmailHistoryPanelClient from '@/components/leads/EmailHistoryPanelClient';
+import AssigneeSelectClient from '@/components/leads/AssigneeSelectClient';
+
+function getActorLabel(params: { actorId: string | null | undefined; currentUserId: string }) {
+  const { actorId, currentUserId } = params;
+
+  if (!actorId) return 'System';
+  if (actorId === currentUserId) return 'You';
+  return `User ${actorId.slice(0, 8)}`;
+}
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -338,14 +341,20 @@ export default async function LeadDetailPage({ params }: PageProps) {
   ]);
   const followupDate = formatDateInput(followupDateRaw);
 
-  // Assigned user label
+  // Assigned user label (prefer assigned_to; fallback to assigned_user_id if legacy)
+  const assignedUserId: string | null =
+    (typeof (lead as any).assigned_to === 'string' ? (lead as any).assigned_to : null) ??
+    (typeof (lead as any).assigned_user_id === 'string' ? (lead as any).assigned_user_id : null) ??
+    null;
+
   let assignedUserLabel = 'Unassigned';
-  if (lead.assigned_user_id) {
+  if (assignedUserId) {
     const { data: assignedUser } = await supabase
       .from('profiles')
       .select('full_name,email')
-      .eq('id', lead.assigned_user_id)
+      .eq('id', assignedUserId)
       .maybeSingle();
+
     if (assignedUser) {
       assignedUserLabel = assignedUser.full_name || assignedUser.email || 'Unassigned';
     }
@@ -405,7 +414,7 @@ export default async function LeadDetailPage({ params }: PageProps) {
         <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-6 mb-4">
           <div className="text-sm font-semibold mb-1">Assigned to</div>
           {isAdmin ? (
-            <AssigneeSelectClient leadId={leadId} assignedUserId={lead.assigned_user_id ?? null} />
+            <AssigneeSelectClient leadId={leadId} assignedUserId={assignedUserId} />
           ) : (
             <div className="text-sm text-white/80">{assignedUserLabel}</div>
           )}
@@ -486,6 +495,3 @@ type EmailLogRow = {
   sent_by: string | null;
   document_ids: unknown[] | null;
 };
-
-import EmailHistoryPanelClient from '@/components/leads/EmailHistoryPanelClient';
-import AssigneeSelectClient from '@/components/leads/AssigneeSelectClient';

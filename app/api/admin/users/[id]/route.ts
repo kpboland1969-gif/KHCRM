@@ -1,59 +1,50 @@
-import { NextRequest } from 'next/server';
-import { jsonOk, jsonErr, safeErrorMessage } from '../../../../../lib/api/response';
-import { createSupabaseServerClient } from '@/lib/supabase-server';
+import { requireAdmin } from '@/lib/api/adminGuard';
+import { jsonOk, jsonErr, safeErrorMessage } from '@/lib/api/response';
 
-async function requireAdmin(req: NextRequest) {
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser();
-  if (error || !user) return null;
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('id, full_name, username, role, is_admin, created_at')
-    .eq('id', user.id)
-    .single();
-  if (!profile || !(profile.is_admin || profile.role === 'admin')) return null;
-  return { user, profile };
-}
+type Body = {
+  full_name?: string;
+  role?: 'admin' | 'user';
+  disabled?: boolean;
+};
 
-export async function PATCH(
-  req: NextRequest,
-  context: { params: Promise<{ id: string }> },
-): Promise<Response> {
+export async function PUT(req: Request, context: { params: Promise<{ id: string }> }) {
   try {
-    const admin = await requireAdmin(req);
-    if (!admin) return jsonErr('Not authorized', { status: 403 });
-    const { id: userId } = await context.params;
-    const body = await req.json();
-    const supabase = await createSupabaseServerClient();
-    // Supabase does not support disabling users directly via admin API.
-    // You may need to set a custom field or block sign-in via RLS or metadata.
-    // Handle role change
-    if (body.role === 'admin' || body.role === 'user') {
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .update({
-          role: body.role,
-          is_admin: body.role === 'admin',
-        })
-        .eq('id', userId);
-      if (profileError) return jsonErr(safeErrorMessage(profileError), { status: 500 });
+    const guard = await requireAdmin();
+    if (!guard.ok) return guard.res;
+
+    const { supabase } = guard;
+    const { id } = await context.params;
+
+    let body: Body | null = null;
+    try {
+      body = (await req.json()) as Body;
+    } catch {
+      return jsonErr('Invalid JSON body', { status: 400, code: 'BAD_JSON' });
     }
-    // Handle profile updates
-    const profileFields: any = {};
-    if (body.fullName) profileFields.full_name = body.fullName;
-    if (body.username) profileFields.username = body.username;
-    if (Object.keys(profileFields).length) {
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .update(profileFields)
-        .eq('id', userId);
-      if (profileError) return jsonErr(safeErrorMessage(profileError), { status: 500 });
+
+    if (!id) return jsonErr('Missing user id', { status: 400, code: 'MISSING_ID' });
+
+    const patch: Record<string, any> = {};
+    if (body?.full_name !== undefined) patch.full_name = String(body.full_name);
+    if (body?.role !== undefined) patch.role = body.role;
+    if (body?.disabled !== undefined) patch.disabled = !!body.disabled;
+
+    if (Object.keys(patch).length === 0) {
+      return jsonErr('No fields provided', { status: 400, code: 'NO_FIELDS' });
     }
-    return jsonOk({ ok: true });
-  } catch (e: any) {
-    return jsonErr(safeErrorMessage(e), { status: 500 });
+
+    const { data, error } = await supabase
+      .from('profiles')
+      .update(patch)
+      .eq('id', id)
+      .select('id,email,full_name,username,role,is_admin,disabled,created_at')
+      .maybeSingle();
+
+    if (error) return jsonErr(safeErrorMessage(error), { status: 500, code: 'DB_ERROR' });
+    if (!data) return jsonErr('User not found', { status: 404, code: 'NOT_FOUND' });
+
+    return jsonOk(data);
+  } catch (e) {
+    return jsonErr(safeErrorMessage(e), { status: 500, code: 'UNKNOWN' });
   }
 }

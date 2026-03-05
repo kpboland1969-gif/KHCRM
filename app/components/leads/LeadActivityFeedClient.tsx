@@ -45,9 +45,14 @@ export default function LeadActivityFeedClient({
 
   // Refresh hook (note form triggers this event)
   useEffect(() => {
-    function onRefresh(e: Event) {
+    let lastRefresh = 0;
+    const REFRESH_DEBOUNCE_MS = 500;
+    const onRefresh = (e: Event) => {
       const ce = e as CustomEvent<{ leadId: string }>;
       if (ce.detail?.leadId !== leadId) return;
+      const now = Date.now();
+      if (now - lastRefresh < REFRESH_DEBOUNCE_MS) return;
+      lastRefresh = now;
       (async () => {
         try {
           const { parseApiResponse, getRetryAfterSeconds, formatApiError } =
@@ -75,7 +80,7 @@ export default function LeadActivityFeedClient({
           setError({ message: e?.message || 'Failed to load activity' });
         }
       })();
-    }
+    };
     window.addEventListener('khcrm:activity:refresh', onRefresh as EventListener);
     return () => {
       window.removeEventListener('khcrm:activity:refresh', onRefresh as EventListener);
