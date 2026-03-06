@@ -1,185 +1,331 @@
 import 'server-only';
+
 import Link from 'next/link';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
-import FollowUpsFiltersClient from '@/components/followups/FollowUpsFiltersClient';
+import { getUserProfile } from '@/lib/getUserProfile';
 
-function formatDate(dt: string | null) {
-  if (!dt) return '';
-  const d = new Date(dt);
-  if (Number.isNaN(d.getTime())) return '';
+type FollowUpsPageProps = {
+  searchParams?: Promise<{
+    scope?: string;
+    status?: string;
+    q?: string;
+  }>;
+};
+
+type LeadRow = {
+  id: string;
+  company_name: string | null;
+  contact_person: string | null;
+  email: string | null;
+  status: string | null;
+  follow_up_date: string | null;
+  assigned_user_id: string | null;
+};
+
+function startOfTodayLocal() {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
+
+function endOfTodayLocal() {
+  const d = new Date();
+  d.setHours(23, 59, 59, 999);
+  return d.getTime();
+}
+
+function classifyFollowUp(value: string | null | undefined) {
+  if (!value) return 'none';
+  const t = new Date(value).getTime();
+  if (Number.isNaN(t)) return 'none';
+
+  const start = startOfTodayLocal();
+  const end = endOfTodayLocal();
+
+  if (t < start) return 'overdue';
+  if (t >= start && t <= end) return 'due_today';
+  return 'upcoming';
+}
+
+function formatDateTime(value: string | null | undefined) {
+  if (!value) return '—';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '—';
   return d.toLocaleString();
 }
 
-export default async function FollowUpsPage({
-  searchParams,
-}: {
-  searchParams: Record<string, string | undefined>;
-}) {
+function formatStatusLabel(value: string | null | undefined) {
+  if (!value) return 'Unknown';
+  return value
+    .trim()
+    .replaceAll('_', ' ')
+    .replace(/\b\w/g, (m) => m.toUpperCase());
+}
+
+function buildPageUrl(params: { scope: string; status: string; q: string }) {
+  const sp = new URLSearchParams();
+  if (params.scope) sp.set('scope', params.scope);
+  if (params.status) sp.set('status', params.status);
+  if (params.q) sp.set('q', params.q);
+  const qs = sp.toString();
+  return `/dashboard/follow-ups${qs ? `?${qs}` : ''}`;
+}
+
+export default async function FollowUpsPage({ searchParams }: FollowUpsPageProps) {
+  const resolved = (await searchParams) ?? {};
+  const profile = await getUserProfile();
+
+  if (!profile) {
+    return (
+      <div className="p-6">
+        <h1 className="text-2xl font-semibold text-white">Follow-ups</h1>
+        <p className="mt-3 text-sm text-red-200">
+          No dashboard profile could be loaded on the server.
+        </p>
+      </div>
+    );
+  }
+
+  const isAdmin = profile.role === 'admin';
+  const requestedScope = resolved.scope === 'all' ? 'all' : 'mine';
+  const activeScope = isAdmin ? requestedScope : 'mine';
+  const activeStatus =
+    resolved.status === 'overdue' ||
+    resolved.status === 'due_today' ||
+    resolved.status === 'upcoming'
+      ? resolved.status
+      : 'all';
+  const q = (resolved.q ?? '').trim();
+
   const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
-  if (userError || !user) {
-    return <div className="p-6">Not authenticated</div>;
-  }
 
-  // Determine admin
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('id,full_name,email,is_admin')
-    .eq('id', user.id)
-    .maybeSingle();
-  const isAdmin = !!profile?.is_admin;
-
-  // Query params
-  const scope = isAdmin ? (searchParams.scope === 'all' ? 'all' : 'mine') : 'mine';
-  const range = searchParams.range ?? 'all';
-  const q = (searchParams.q ?? '').trim().toLowerCase();
-  const assignee = isAdmin ? (searchParams.assignee ?? undefined) : undefined;
-
-  // Build filters
-  let leadsQuery = supabase
+  let query = supabase
     .from('leads')
-    .select('*')
+    .select('id,company_name,contact_person,email,status,follow_up_date,assigned_user_id')
     .not('follow_up_date', 'is', null)
-    .order('follow_up_date', { ascending: true })
-    .limit(200);
+    .order('follow_up_date', { ascending: true });
 
-  if (!isAdmin) {
-    leadsQuery = leadsQuery.eq('assigned_user_id', user.id);
-  } else if (scope === 'mine') {
-    leadsQuery = leadsQuery.eq('assigned_user_id', user.id);
-  } else if (assignee) {
-    leadsQuery = leadsQuery.eq('assigned_user_id', assignee);
+  if (!isAdmin || activeScope === 'mine') {
+    query = query.eq('assigned_user_id', profile.id);
   }
 
-  const { data: leadsRaw, error: leadsErr } = await leadsQuery;
-  if (leadsErr) {
-    return <div className="p-6">Error loading leads: {leadsErr.message}</div>;
+  if (q) {
+    query = query.or(
+      [`company_name.ilike.%${q}%`, `contact_person.ilike.%${q}%`, `email.ilike.%${q}%`].join(','),
+    );
   }
-  let leads = Array.isArray(leadsRaw) ? leadsRaw : [];
 
-  // Range filter
-  const now = new Date();
-  const todayStr = now.toISOString().slice(0, 10);
-  const next7 = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-  const next30 = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+  const { data, error } = await query;
 
-  leads = leads.filter((lead) => {
-    const dt = lead.follow_up_date;
-    if (!dt) return false;
-    const d = new Date(dt);
-    if (range === 'overdue') return d < now;
-    if (range === 'today') return d.toISOString().slice(0, 10) === todayStr;
-    if (range === 'next7') return d > now && d <= next7;
-    if (range === 'next30') return d > now && d <= next30;
-    return true;
+  if (error) {
+    return (
+      <div className="p-6">
+        <h1 className="text-2xl font-semibold text-white">Follow-ups</h1>
+        <p className="mt-3 text-sm text-red-200">Failed to load follow-ups: {error.message}</p>
+      </div>
+    );
+  }
+
+  const leads = Array.isArray(data) ? (data as LeadRow[]) : [];
+
+  const filtered = leads.filter((lead) => {
+    const bucket = classifyFollowUp(lead.follow_up_date);
+    if (bucket === 'none') return false;
+    if (activeStatus === 'all') return true;
+    return bucket === activeStatus;
   });
 
-  // Search filter
-  if (q) {
-    leads = leads.filter((lead) => {
-      return (
-        (lead.company_name ?? '').toLowerCase().includes(q) ||
-        (lead.contact_person ?? '').toLowerCase().includes(q) ||
-        (lead.email ?? '').toLowerCase().includes(q)
-      );
-    });
-  }
-
-  // Assigned user label mapping (admin view)
-  const userLabels: Record<string, string> = {};
-  if (isAdmin && (scope === 'all' || assignee)) {
-    const userIds = Array.from(new Set(leads.map((l) => l.assigned_user_id).filter(Boolean)));
-    if (userIds.length > 0) {
-      const { data: profilesRaw } = await supabase
-        .from('profiles')
-        .select('id,full_name,email')
-        .in('id', userIds);
-      if (Array.isArray(profilesRaw)) {
-        for (const p of profilesRaw) {
-          userLabels[p.id] = p.full_name || p.email || p.id;
-        }
-      }
-    }
-  }
-
-  // Bucketing
-  const overdue = [];
-  const today = [];
-  const upcoming = [];
-  for (const lead of leads) {
-    const d = new Date(lead.follow_up_date);
-    if (d < now) overdue.push(lead);
-    else if (d.toISOString().slice(0, 10) === todayStr) today.push(lead);
-    else upcoming.push(lead);
-  }
+  const grouped = {
+    overdue: filtered.filter((lead) => classifyFollowUp(lead.follow_up_date) === 'overdue'),
+    due_today: filtered.filter((lead) => classifyFollowUp(lead.follow_up_date) === 'due_today'),
+    upcoming: filtered.filter((lead) => classifyFollowUp(lead.follow_up_date) === 'upcoming'),
+  };
 
   return (
-    <div className="p-6 space-y-8">
-      <h1 className="text-2xl font-semibold">Follow-ups</h1>
-      <FollowUpsFiltersClient
-        isAdmin={isAdmin}
-        scope={scope}
-        range={range}
-        search={q}
-        assignee={assignee}
-      />
-      <div className="space-y-8">
-        {[
-          { label: 'Overdue', items: overdue, badge: 'Overdue', color: 'bg-red-500/10' },
-          { label: 'Today', items: today, badge: 'Today', color: 'bg-yellow-400/10' },
-          { label: 'Upcoming', items: upcoming, badge: 'Upcoming', color: 'bg-emerald-500/10' },
-        ].map(({ label, items, badge, color }) =>
-          items.length > 0 ? (
-            <div key={label}>
-              <div className="text-lg font-semibold mb-2">{label}</div>
-              <div className="space-y-2">
-                {items.map((lead) => (
-                  <div
-                    key={lead.id}
-                    className={`rounded-xl border border-white/10 ${color} p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-2`}
-                  >
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-white/90">
-                          {lead.company_name || '(No company)'}
-                        </span>
-                        <span className="inline-block rounded bg-white/10 px-2 py-0.5 text-xs text-white/60">
-                          {badge}
-                        </span>
-                      </div>
-                      <div className="mt-1 text-xs text-white/80">
-                        Contact: {lead.contact_person || '(No contact)'}
-                      </div>
-                      <div className="mt-1 text-xs text-white/80">
-                        Status: {lead.status || '(No status)'}
-                      </div>
-                      <div className="mt-1 text-xs text-white/80">
-                        Follow-up: {formatDate(lead.follow_up_date)}
-                      </div>
-                      {isAdmin && (scope === 'all' || assignee) ? (
-                        <div className="mt-1 text-xs text-white/80">
-                          Assigned: {userLabels[lead.assigned_user_id] || lead.assigned_user_id}
-                        </div>
-                      ) : null}
-                    </div>
-                    <div className="flex-shrink-0">
-                      <Link
-                        href={`/dashboard/leads/${lead.id}`}
-                        className="inline-flex items-center justify-center rounded-xl border border-white/10 bg-white/[0.08] px-3 py-1 text-xs font-medium text-white hover:bg-white/[0.15]"
-                      >
-                        View
-                      </Link>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : null,
-        )}
+    <div className="space-y-6 p-6">
+      <div>
+        <h1 className="text-2xl font-semibold text-white">Follow-ups</h1>
       </div>
+
+      <form
+        method="GET"
+        action="/dashboard/follow-ups"
+        className="flex flex-wrap items-center gap-2"
+      >
+        <select
+          name="scope"
+          defaultValue={activeScope}
+          className="rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-sm text-white"
+        >
+          <option value="mine">Mine</option>
+          {isAdmin ? <option value="all">All</option> : null}
+        </select>
+
+        <select
+          name="status"
+          defaultValue={activeStatus}
+          className="rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-sm text-white"
+        >
+          <option value="all">All</option>
+          <option value="overdue">Overdue</option>
+          <option value="due_today">Due Today</option>
+          <option value="upcoming">Upcoming</option>
+        </select>
+
+        <input
+          type="text"
+          name="q"
+          defaultValue={q}
+          placeholder="Search company/contact/email"
+          className="min-w-[240px] rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-sm text-white placeholder:text-white/40"
+        />
+
+        <button
+          type="submit"
+          className="rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-sm font-medium text-white hover:bg-white/15"
+        >
+          Apply
+        </button>
+
+        <Link
+          href={buildPageUrl({
+            scope: activeScope,
+            status: 'all',
+            q: '',
+          })}
+          className="rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-white/80 hover:bg-white/[0.08]"
+        >
+          Clear
+        </Link>
+      </form>
+
+      {activeStatus === 'all' || activeStatus === 'overdue' ? (
+        <section className="space-y-3">
+          <h2 className="text-xl font-semibold text-white">Overdue</h2>
+          {grouped.overdue.length === 0 ? (
+            <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-4 text-sm text-white/60">
+              No overdue follow-ups.
+            </div>
+          ) : (
+            grouped.overdue.map((lead) => (
+              <div
+                key={lead.id}
+                className="flex items-center justify-between gap-4 rounded-2xl border border-red-400/20 bg-red-500/10 p-4"
+              >
+                <div>
+                  <div className="flex items-center gap-2">
+                    <div className="text-lg font-semibold text-white">
+                      {lead.company_name || '—'}
+                    </div>
+                    <span className="rounded-full bg-red-500/15 px-2 py-1 text-xs font-medium text-red-200">
+                      Overdue
+                    </span>
+                  </div>
+                  <div className="mt-1 text-sm text-white/80">
+                    Contact: {lead.contact_person || '—'}
+                  </div>
+                  <div className="text-sm text-white/70">
+                    Status: {formatStatusLabel(lead.status)}
+                  </div>
+                  <div className="text-sm text-white/70">
+                    Follow-up: {formatDateTime(lead.follow_up_date)}
+                  </div>
+                </div>
+
+                <Link
+                  href={`/dashboard/leads/${lead.id}`}
+                  className="rounded-lg border border-white/20 bg-white/10 px-4 py-2 text-sm font-medium text-white hover:bg-white/15"
+                >
+                  View
+                </Link>
+              </div>
+            ))
+          )}
+        </section>
+      ) : null}
+
+      {activeStatus === 'all' || activeStatus === 'due_today' ? (
+        <section className="space-y-3">
+          <h2 className="text-xl font-semibold text-white">Due Today</h2>
+          {grouped.due_today.length === 0 ? (
+            <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-4 text-sm text-white/60">
+              No follow-ups due today.
+            </div>
+          ) : (
+            grouped.due_today.map((lead) => (
+              <div
+                key={lead.id}
+                className="flex items-center justify-between gap-4 rounded-2xl border border-amber-400/20 bg-amber-500/10 p-4"
+              >
+                <div>
+                  <div className="flex items-center gap-2">
+                    <div className="text-lg font-semibold text-white">
+                      {lead.company_name || '—'}
+                    </div>
+                    <span className="rounded-full bg-amber-500/15 px-2 py-1 text-xs font-medium text-amber-200">
+                      Due Today
+                    </span>
+                  </div>
+                  <div className="mt-1 text-sm text-white/80">
+                    Contact: {lead.contact_person || '—'}
+                  </div>
+                  <div className="text-sm text-white/70">
+                    Status: {formatStatusLabel(lead.status)}
+                  </div>
+                  <div className="text-sm text-white/70">
+                    Follow-up: {formatDateTime(lead.follow_up_date)}
+                  </div>
+                </div>
+
+                <Link
+                  href={`/dashboard/leads/${lead.id}`}
+                  className="rounded-lg border border-white/20 bg-white/10 px-4 py-2 text-sm font-medium text-white hover:bg-white/15"
+                >
+                  View
+                </Link>
+              </div>
+            ))
+          )}
+        </section>
+      ) : null}
+
+      {activeStatus === 'all' || activeStatus === 'upcoming' ? (
+        <section className="space-y-3">
+          <h2 className="text-xl font-semibold text-white">Upcoming</h2>
+          {grouped.upcoming.length === 0 ? (
+            <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-4 text-sm text-white/60">
+              No upcoming follow-ups.
+            </div>
+          ) : (
+            grouped.upcoming.map((lead) => (
+              <div
+                key={lead.id}
+                className="flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-white/[0.02] p-4"
+              >
+                <div>
+                  <div className="text-lg font-semibold text-white">{lead.company_name || '—'}</div>
+                  <div className="mt-1 text-sm text-white/80">
+                    Contact: {lead.contact_person || '—'}
+                  </div>
+                  <div className="text-sm text-white/70">
+                    Status: {formatStatusLabel(lead.status)}
+                  </div>
+                  <div className="text-sm text-white/70">
+                    Follow-up: {formatDateTime(lead.follow_up_date)}
+                  </div>
+                </div>
+
+                <Link
+                  href={`/dashboard/leads/${lead.id}`}
+                  className="rounded-lg border border-white/20 bg-white/10 px-4 py-2 text-sm font-medium text-white hover:bg-white/15"
+                >
+                  View
+                </Link>
+              </div>
+            ))
+          )}
+        </section>
+      ) : null}
     </div>
   );
 }
