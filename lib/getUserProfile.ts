@@ -22,20 +22,7 @@ export async function getUserProfile(): Promise<UserProfile | null> {
     .eq('id', authUser.id)
     .maybeSingle();
 
-  if (error) {
-    const email = authUser.email ?? '';
-    const username = email.split('@')[0] ?? 'user';
-
-    return {
-      id: authUser.id,
-      email,
-      username,
-      full_name: username,
-      role: 'user',
-    };
-  }
-
-  if (!profile) {
+  if (error || !profile) {
     const email = authUser.email ?? '';
     const username = email.split('@')[0] ?? 'user';
 
