@@ -6,6 +6,7 @@ export type UserProfile = {
   id: string;
   email: string;
   username: string;
+  full_name: string;
   role: UserRole;
 };
 
@@ -18,15 +19,18 @@ export async function getUserProfile(): Promise<UserProfile | null> {
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('id,email,username,role')
+    .select('id,email,username,full_name,role')
     .eq('id', user.id)
     .maybeSingle();
 
   if (!profile) {
+    const email = user.email ?? '';
+    const username = email.split('@')[0] ?? 'user';
     return {
       id: user.id,
-      email: user.email ?? '',
-      username: user.email?.split('@')[0] ?? 'user',
+      email,
+      username,
+      full_name: username,
       role: 'user',
     };
   }

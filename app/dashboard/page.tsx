@@ -7,7 +7,16 @@ import { UserRole } from '@/lib/getUserProfile';
 
 export default async function DashboardPage() {
   const profile = await getUserProfile();
-  if (!profile) return null;
+  if (!profile) {
+    return (
+      <div className="p-6">
+        <h1 className="text-2xl font-semibold text-white">Dashboard</h1>
+        <p className="mt-3 text-sm text-red-200">
+          No server-side session found. You appear to be signed out on the server.
+        </p>
+      </div>
+    );
+  }
   const stats = await getDashboardStats(profile.id, profile.role);
   const { data: leads } = await getAssignedLeads(profile.id, profile.role);
   const topLeads = (leads || []).slice(0, 10);
