@@ -14,12 +14,21 @@ type ProfileUser = {
   username?: string | null;
 };
 
+function fallbackUsername(u: ProfileUser): string {
+  if (u.username && u.username.trim()) return u.username.trim();
+
+  if (u.email && u.email.includes('@')) {
+    return u.email.split('@')[0];
+  }
+
+  if (u.full_name && u.full_name.trim()) {
+    return u.full_name.trim().toLowerCase().replace(/\s+/g, '');
+  }
+
+  return 'user';
+}
+
 function extractUsersFromAdminUsersResponse(payload: any): any[] {
-  // Supports:
-  // 1) { ok: true, data: { users: [...] } }
-  // 2) { ok: true, users: [...] }
-  // 3) { ok: true, data: [...] }
-  // 4) { ok: true, data: { data: { users: [...] } } } (double wrapped)
   const candidates = [
     payload?.data?.users,
     payload?.users,
@@ -27,6 +36,7 @@ function extractUsersFromAdminUsersResponse(payload: any): any[] {
     payload?.data?.data?.users,
     payload?.data?.data,
   ];
+
   for (const c of candidates) {
     if (Array.isArray(c)) return c;
   }
@@ -40,7 +50,7 @@ function normalizeEmail(value: string) {
 function roleRank(role: string | null | undefined) {
   if (role === 'admin') return 0;
   if (role === 'manager') return 1;
-  return 2; // user/unknown
+  return 2;
 }
 
 function sortUsersForAdminTable(list: ProfileUser[]): ProfileUser[] {
@@ -48,15 +58,12 @@ function sortUsersForAdminTable(list: ProfileUser[]): ProfileUser[] {
     const aDisabled = !!(a.disabled ?? false);
     const bDisabled = !!(b.disabled ?? false);
 
-    // Disabled last
     if (aDisabled !== bDisabled) return aDisabled ? 1 : -1;
 
-    // Role order: admin, manager, user
     const ar = roleRank(a.role);
     const br = roleRank(b.role);
     if (ar !== br) return ar - br;
 
-    // Email fallback sort
     const ae = (a.email ?? '').toLowerCase();
     const be = (b.email ?? '').toLowerCase();
     return ae.localeCompare(be);
@@ -64,7 +71,6 @@ function sortUsersForAdminTable(list: ProfileUser[]): ProfileUser[] {
 }
 
 function hardClearSupabaseSessionStorage() {
-  // localStorage / sessionStorage keys vary by project ref; we clear broadly but safely.
   try {
     if (typeof window !== 'undefined') {
       const ls = window.localStorage;
@@ -91,7 +97,6 @@ function hardClearSupabaseSessionStorage() {
     // ignore
   }
 
-  // Clear non-HttpOnly cookies (HttpOnly can't be cleared client-side)
   try {
     if (typeof document !== 'undefined') {
       const cookies = document.cookie.split(';').map((c) => c.trim());
@@ -161,7 +166,6 @@ export default function AdminUsersClient() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Invite form state
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteName, setInviteName] = useState('');
   const [inviteRole, setInviteRole] = useState('user');
@@ -169,17 +173,12 @@ export default function AdminUsersClient() {
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [inviteSuccess, setInviteSuccess] = useState<string | null>(null);
 
-  // Row action state
   const [rowBusyId, setRowBusyId] = useState<string | null>(null);
   const [rowMessage, setRowMessage] = useState<string | null>(null);
 
-  // Current user id state
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-
-  // Per-row editable name state
   const [editNameById, setEditNameById] = useState<Record<string, string>>({});
-  // Client-side Supabase (for logout) without auth-helpers.
-  // Uses anon key; safe on client. Sign-out only needs anon.
+
   const supabase = useMemo(() => {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -201,11 +200,12 @@ export default function AdminUsersClient() {
       }
 
       const list = extractUsersFromAdminUsersResponse(parsed) as ProfileUser[];
-      setUsers(sortUsersForAdminTable(list));
-      // Seed per-row editable name state
+      const sorted = sortUsersForAdminTable(list);
+
+      setUsers(sorted);
       setEditNameById((prev) => {
         const next: Record<string, string> = { ...prev };
-        for (const u of sortUsersForAdminTable(list)) {
+        for (const u of sorted) {
           if (next[u.id] === undefined) next[u.id] = u.full_name ?? '';
         }
         return next;
@@ -216,7 +216,7 @@ export default function AdminUsersClient() {
       setLoading(false);
     }
   }, []);
-  // Fetch current user id client-side
+
   useEffect(() => {
     let cancelled = false;
 
@@ -239,7 +239,23 @@ export default function AdminUsersClient() {
       cancelled = true;
     };
   }, [supabase]);
-  // Helpers to call the update endpoint
+
+  useEffect(() => {
+    void loadUsers();
+  }, [loadUsers]);
+
+  useEffect(() => {
+    if (!inviteSuccess) return;
+    const t = window.setTimeout(() => setInviteSuccess(null), 5000);
+    return () => window.clearTimeout(t);
+  }, [inviteSuccess]);
+
+  useEffect(() => {
+    if (!rowMessage) return;
+    const t = window.setTimeout(() => setRowMessage(null), 5000);
+    return () => window.clearTimeout(t);
+  }, [rowMessage]);
+
   const updateUser = useCallback(
     async (
       userId: string,
@@ -247,12 +263,14 @@ export default function AdminUsersClient() {
     ) => {
       setRowMessage(null);
       setRowBusyId(userId);
+
       try {
         const res = await fetch(`/api/admin/users/${encodeURIComponent(userId)}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(patch),
         });
+
         const parsed = await parseApiResponse(res);
         if (!parsed.ok) {
           const retryAfter = getRetryAfterSeconds(res);
@@ -260,6 +278,7 @@ export default function AdminUsersClient() {
           setRowMessage(retryAfter ? `${base} (Retry after ${retryAfter}s)` : base);
           return false;
         }
+
         await loadUsers();
         return true;
       } catch (e) {
@@ -279,12 +298,14 @@ export default function AdminUsersClient() {
         setRowMessage('You cannot disable your own account.');
         return;
       }
+
       const nextDisabled = !(u.disabled ?? false);
       const verb = nextDisabled ? 'Disable' : 'Enable';
       const ok = window.confirm(
         `${verb} this user?\n\n${nextDisabled ? 'Disabled users cannot log in.' : 'They will regain access.'}`,
       );
       if (!ok) return;
+
       await updateUser(u.id, { disabled: nextDisabled });
     },
     [currentUserId, updateUser],
@@ -297,8 +318,10 @@ export default function AdminUsersClient() {
         setRowMessage('You cannot remove your own admin access.');
         return;
       }
+
       const ok = window.confirm(`Change role for ${u.email ?? u.id.slice(0, 8)} to "${nextRole}"?`);
       if (!ok) return;
+
       await updateUser(u.id, { role: nextRole });
     },
     [currentUserId, updateUser],
@@ -311,29 +334,14 @@ export default function AdminUsersClient() {
         setRowMessage('Full name cannot be empty.');
         return;
       }
+
       const ok = window.confirm(`Save new name for ${u.email ?? u.id.slice(0, 8)}?`);
       if (!ok) return;
+
       await updateUser(u.id, { full_name });
     },
     [updateUser],
   );
-
-  useEffect(() => {
-    void loadUsers();
-  }, [loadUsers]);
-
-  // Auto-clear success messages (UX polish)
-  useEffect(() => {
-    if (!inviteSuccess) return;
-    const t = window.setTimeout(() => setInviteSuccess(null), 5000);
-    return () => window.clearTimeout(t);
-  }, [inviteSuccess]);
-
-  useEffect(() => {
-    if (!rowMessage) return;
-    const t = window.setTimeout(() => setRowMessage(null), 5000);
-    return () => window.clearTimeout(t);
-  }, [rowMessage]);
 
   const onInviteSubmit = useCallback(
     async (e: FormEvent) => {
@@ -461,7 +469,6 @@ export default function AdminUsersClient() {
         </button>
       </div>
 
-      {/* Invite */}
       <div className="rounded-lg border bg-white p-4">
         <div className="flex items-start justify-between gap-4">
           <div>
@@ -525,7 +532,6 @@ export default function AdminUsersClient() {
         {inviteSuccess ? <p className="mt-3 text-sm text-green-700">{inviteSuccess}</p> : null}
       </div>
 
-      {/* Users */}
       <div>
         <h2 className="text-lg font-semibold text-white">Users</h2>
 
@@ -566,6 +572,7 @@ export default function AdminUsersClient() {
                 users.map((u) => {
                   const active = !(u.disabled ?? false);
                   const isSelf = !!currentUserId && u.id === currentUserId;
+
                   return (
                     <tr
                       key={u.id}
@@ -593,7 +600,7 @@ export default function AdminUsersClient() {
                           </button>
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-sm text-white/90">{u.username ?? ''}</td>
+                      <td className="px-4 py-3 text-sm text-white/90">{fallbackUsername(u)}</td>
                       <td className="px-4 py-3 text-sm text-white/90">
                         <select
                           value={u.role ?? 'user'}

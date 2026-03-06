@@ -26,24 +26,14 @@ export default async function LeadsPage() {
   });
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div className="space-y-1">
           <h1 className="text-2xl font-semibold tracking-tight">Leads</h1>
-          {/* keep any existing subtitle/description if you have it */}
         </div>
-
-        {/* NEW: Entry point to create a lead */}
         <Link href="/dashboard/leads/new">
           <Button type="button">New Lead</Button>
         </Link>
       </div>
-
-      {/* ...keep the rest of your existing Leads page UI:
-            - filters/search client component
-            - table
-            - pagination
-        */}
       <LeadsFiltersClient />
       <LeadTable leads={sortedLeads || []} />
     </div>

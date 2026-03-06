@@ -46,7 +46,9 @@ export default async function FollowUpsPage({
     .order('follow_up_date', { ascending: true })
     .limit(200);
 
-  if (!isAdmin || scope === 'mine') {
+  if (!isAdmin) {
+    leadsQuery = leadsQuery.eq('assigned_user_id', user.id);
+  } else if (scope === 'mine') {
     leadsQuery = leadsQuery.eq('assigned_user_id', user.id);
   } else if (assignee) {
     leadsQuery = leadsQuery.eq('assigned_user_id', assignee);
