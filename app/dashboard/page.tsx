@@ -12,7 +12,10 @@ export default async function DashboardPage() {
       <div className="p-6">
         <h1 className="text-2xl font-semibold text-white">Dashboard</h1>
         <p className="mt-3 text-sm text-red-200">
-          No server-side session found. You appear to be signed out on the server.
+          No dashboard profile could be loaded on the server.
+        </p>
+        <p className="mt-2 text-xs text-white/50">
+          Auth succeeded far enough to reach /dashboard, but profile lookup returned null.
         </p>
       </div>
     );

@@ -1,4 +1,4 @@
-﻿import { createSupabaseServerClient } from '@/lib/supabase-server';
+﻿import { createSupabaseServerClient, getServerUser } from '@/lib/supabase/server';
 
 export type UserRole = 'admin' | 'user' | 'manager';
 
@@ -11,23 +11,36 @@ export type UserProfile = {
 };
 
 export async function getUserProfile(): Promise<UserProfile | null> {
+  const authUser = await getServerUser();
+  if (!authUser) return null;
+
   const supabase = await createSupabaseServerClient();
 
-  const { data: auth } = await supabase.auth.getUser();
-  const user = auth?.user;
-  if (!user) return null;
-
-  const { data: profile } = await supabase
+  const { data: profile, error } = await supabase
     .from('profiles')
     .select('id,email,username,full_name,role')
-    .eq('id', user.id)
+    .eq('id', authUser.id)
     .maybeSingle();
 
-  if (!profile) {
-    const email = user.email ?? '';
+  if (error) {
+    const email = authUser.email ?? '';
     const username = email.split('@')[0] ?? 'user';
+
     return {
-      id: user.id,
+      id: authUser.id,
+      email,
+      username,
+      full_name: username,
+      role: 'user',
+    };
+  }
+
+  if (!profile) {
+    const email = authUser.email ?? '';
+    const username = email.split('@')[0] ?? 'user';
+
+    return {
+      id: authUser.id,
       email,
       username,
       full_name: username,
