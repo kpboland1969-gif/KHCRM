@@ -1,9 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
+const ALLOWED_INDUSTRIES = new Set(['construction', 'subcontractor', 'manufacturing', 'wholesale']);
+
 function normalizeValue(value: string | null | undefined) {
   const trimmed = value?.trim();
   return trimmed && trimmed.length > 0 ? trimmed : null;
+}
+
+function normalizeIndustry(value: string | null | undefined) {
+  const normalized = normalizeValue(value)?.toLowerCase() ?? null;
+
+  if (!normalized) return 'construction';
+  if (ALLOWED_INDUSTRIES.has(normalized)) return normalized;
+
+  const compact = normalized.replace(/[\s_-]+/g, '');
+
+  if (compact === 'construction') return 'construction';
+  if (compact === 'subcontractor' || compact === 'subcontractors') return 'subcontractor';
+  if (compact === 'manufacturing' || compact === 'manufacturer') return 'manufacturing';
+  if (compact === 'wholesale' || compact === 'wholesaler') return 'wholesale';
+
+  return 'construction';
 }
 
 async function requireAdmin() {
@@ -137,7 +155,6 @@ export async function POST(request: NextRequest) {
     if (email) existingEmails.add(email);
     if (phone) existingPhones.add(phone);
 
-    // Ensure industry is always set for leads insert
     rowsToInsert.push({
       company_name: row.company_name,
       contact_person: row.contact_person,
@@ -150,7 +167,7 @@ export async function POST(request: NextRequest) {
       city: normalizeValue(row.city),
       state: normalizeValue(row.state),
       zip: normalizeValue(row.zip),
-      industry: normalizeValue(row.industry) || 'other',
+      industry: normalizeIndustry(row.industry),
       status: normalizeValue(row.status) || 'new_lead',
       assigned_user_id: row.assigned_user_id || null,
       follow_up_date: row.follow_up_date || null,
