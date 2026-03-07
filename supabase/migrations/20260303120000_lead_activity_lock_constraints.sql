@@ -8,6 +8,11 @@ ALTER TABLE lead_activity ALTER COLUMN created_at SET DEFAULT now();
 ALTER TABLE lead_activity ALTER COLUMN lead_id SET NOT NULL;
 ALTER TABLE lead_activity ALTER COLUMN user_id SET NOT NULL;
 ALTER TABLE lead_activity ALTER COLUMN type SET NOT NULL;
+
+-- Backfill NULL body values before NOT NULL constraint
+UPDATE lead_activity
+SET body = ''
+WHERE body IS NULL;
 ALTER TABLE lead_activity ALTER COLUMN body SET NOT NULL;
 ALTER TABLE lead_activity ALTER COLUMN created_at SET NOT NULL;
 

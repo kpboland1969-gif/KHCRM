@@ -23,16 +23,25 @@ CREATE POLICY lead_activity_insert_own ON public.lead_activity
 -- document_email_log
 DROP POLICY IF EXISTS document_email_log_select_own ON public.document_email_log;
 CREATE POLICY document_email_log_select_own ON public.document_email_log
-  FOR SELECT USING (public.is_active_user() AND user_id = auth.uid());
+  FOR SELECT
+  USING (public.is_active_user() AND sent_by = auth.uid());
 
 -- documents
 DROP POLICY IF EXISTS documents_select_own ON public.documents;
 CREATE POLICY documents_select_own ON public.documents
-  FOR SELECT USING (public.is_active_user() AND user_id = auth.uid());
+  FOR SELECT
+  USING (
+    public.is_active_user()
+    AND uploaded_by = auth.uid()
+  );
 
 DROP POLICY IF EXISTS documents_insert_own ON public.documents;
 CREATE POLICY documents_insert_own ON public.documents
-  FOR INSERT WITH CHECK (public.is_active_user() AND user_id = auth.uid());
+  FOR INSERT
+  WITH CHECK (
+    public.is_active_user()
+    AND uploaded_by = auth.uid()
+  );
 
 -- profiles
 DROP POLICY IF EXISTS profiles_read_all_authenticated ON public.profiles;
