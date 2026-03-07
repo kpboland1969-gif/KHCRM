@@ -19,6 +19,7 @@ async function requireAdmin() {
       ok: false as const,
       response: NextResponse.redirect(
         new URL('/login', process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'),
+        303,
       ),
     };
   }
@@ -136,6 +137,7 @@ export async function POST(request: NextRequest) {
     if (email) existingEmails.add(email);
     if (phone) existingPhones.add(phone);
 
+    // Remove notes from leads insert payload
     rowsToInsert.push({
       company_name: row.company_name,
       contact_person: row.contact_person,
@@ -152,7 +154,6 @@ export async function POST(request: NextRequest) {
       status: normalizeValue(row.status) || 'new_lead',
       assigned_user_id: row.assigned_user_id || null,
       follow_up_date: row.follow_up_date || null,
-      notes: normalizeValue(row.notes),
     });
   }
 
