@@ -463,51 +463,57 @@ export default async function LeadDetailPage({ params }: PageProps) {
           <div className="mt-4 space-y-3">
             {activity.length === 0 ? (
               <div className="text-sm text-white/70">No activity yet.</div>
-            ) : null}
+            ) : (
+              <div className="max-h-[420px] space-y-3 overflow-y-auto pr-2">
+                {activity.map((item) => {
+                  const actorLabel = getActorLabel({
+                    actorId: (item as any).user_id,
+                    currentUserId: user.id,
+                  });
 
-            {activity.map((item) => {
-              const actorLabel = getActorLabel({
-                actorId: (item as any).user_id,
-                currentUserId: user.id,
-              });
+                  const type = (item as any).type as string | undefined;
+                  const title =
+                    type === 'view'
+                      ? `Viewed by ${actorLabel}`
+                      : type === 'note'
+                        ? `Note by ${actorLabel}`
+                        : type === 'email_sent'
+                          ? `Email sent by ${actorLabel}`
+                          : `${(type ?? 'Activity').toString()} by ${actorLabel}`;
 
-              const type = (item as any).type as string | undefined;
-              const title =
-                type === 'view'
-                  ? `Viewed by ${actorLabel}`
-                  : type === 'note'
-                    ? `Note by ${actorLabel}`
-                    : type === 'email_sent'
-                      ? `Email sent by ${actorLabel}`
-                      : `${(type ?? 'Activity').toString()} by ${actorLabel}`;
+                  const bodyText = ((item as any).body as string | undefined) ?? '';
+                  const createdAt = (item as any).created_at;
 
-              const bodyText = ((item as any).body as string | undefined) ?? '';
-              const createdAt = (item as any).created_at;
+                  return (
+                    <div
+                      className="rounded-xl border border-white/10 bg-white/[0.02] p-4"
+                      key={(item as any).id ?? `${type ?? 'activity'}-${String(createdAt ?? '')}`}
+                    >
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="text-sm font-medium text-white/90">{title}</div>
+                        <div className="text-xs text-white/50">{formatWhen(createdAt)}</div>
+                      </div>
 
-              return (
-                <div
-                  className="rounded-xl border border-white/10 bg-white/[0.02] p-4"
-                  key={(item as any).id ?? `${type ?? 'activity'}-${String(createdAt ?? '')}`}
-                >
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="text-sm font-medium text-white/90">{title}</div>
-                    <div className="text-xs text-white/50">{formatWhen(createdAt)}</div>
-                  </div>
+                      {type === 'note' ? (
+                        <div className="mt-2 whitespace-pre-wrap text-sm text-white/80">
+                          {bodyText}
+                        </div>
+                      ) : null}
 
-                  {type === 'note' ? (
-                    <div className="mt-2 text-sm text-white/80 whitespace-pre-wrap">{bodyText}</div>
-                  ) : null}
+                      {type === 'email_sent' ? (
+                        <div className="mt-2 whitespace-pre-wrap text-sm text-white/80">
+                          {bodyText}
+                        </div>
+                      ) : null}
 
-                  {type === 'email_sent' ? (
-                    <div className="mt-2 text-sm text-white/80 whitespace-pre-wrap">{bodyText}</div>
-                  ) : null}
-
-                  {type === 'view' ? (
-                    <div className="mt-2 text-sm text-white/70">This lead was opened.</div>
-                  ) : null}
-                </div>
-              );
-            })}
+                      {type === 'view' ? (
+                        <div className="mt-2 text-sm text-white/70">This lead was opened.</div>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       </div>
