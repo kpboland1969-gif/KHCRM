@@ -354,5 +354,5 @@ export async function POST(request: NextRequest) {
     })
     .eq('id', importRecord.id);
 
-  return NextResponse.redirect(new URL(`/dashboard/import/${importRecord.id}`, request.url));
+  return NextResponse.redirect(new URL(`/dashboard/import/${importRecord.id}`, request.url), 303);
 }
