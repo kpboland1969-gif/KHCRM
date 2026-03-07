@@ -1,6 +1,7 @@
 import 'server-only';
 
 import Link from 'next/link';
+import LeadDocumentsClient from '@/components/leads/LeadDocumentsClient';
 import EmailSlideOver from '@/components/leads/EmailSlideOver';
 import { redirect } from 'next/navigation';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
@@ -154,6 +155,25 @@ export default async function LeadDetailPage({ params }: PageProps) {
   } = await supabase.auth.getUser();
 
   if (userError) {
+    // Lead-specific uploaded documents
+    const { data: leadDocsRaw, error: leadDocsError } = await supabase
+      .from('lead_uploaded_documents')
+      .select('id, filename, storage_path, created_at')
+      .eq('lead_id', leadId)
+      .order('created_at', { ascending: false });
+
+    if (leadDocsError) {
+      console.error('[LeadDetail] lead documents query error:', leadDocsError);
+    }
+
+    const leadDocuments = Array.isArray(leadDocsRaw)
+      ? leadDocsRaw.map((d: any) => ({
+          id: String(d.id),
+          filename: String(d.filename ?? 'Document'),
+          storage_path: String(d.storage_path),
+          created_at: d.created_at,
+        }))
+      : [];
     logServerError('[LeadDetail] auth.getUser error:', userError);
     return (
       <div className="p-6">
@@ -217,6 +237,26 @@ export default async function LeadDetailPage({ params }: PageProps) {
     ? docsRaw.map((d: any) => ({
         id: String(d.id),
         filename: String(d.filename ?? 'Document'),
+      }))
+    : [];
+
+  // Lead-specific uploaded documents
+  const { data: leadDocsRaw, error: leadDocsError } = await supabase
+    .from('lead_uploaded_documents')
+    .select('id, filename, storage_path, created_at')
+    .eq('lead_id', leadId)
+    .order('created_at', { ascending: false });
+
+  if (leadDocsError) {
+    console.error('[LeadDetail] lead documents query error:', leadDocsError);
+  }
+
+  const leadDocuments = Array.isArray(leadDocsRaw)
+    ? leadDocsRaw.map((d: any) => ({
+        id: String(d.id),
+        filename: String(d.filename ?? 'Document'),
+        storage_path: String(d.storage_path ?? ''),
+        created_at: d.created_at ?? null,
       }))
     : [];
 
@@ -469,6 +509,17 @@ export default async function LeadDetailPage({ params }: PageProps) {
               );
             })}
           </div>
+        </div>
+      </div>
+
+      {/* Lead Documents */}
+      <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
+        <div className="flex items-center justify-between">
+          <div className="text-lg font-semibold">Lead Documents</div>
+        </div>
+
+        <div className="mt-4">
+          <LeadDocumentsClient leadId={leadId} documents={leadDocuments} />
         </div>
       </div>
 
