@@ -1,12 +1,11 @@
 import { getUserProfile } from '@/lib/getUserProfile';
-import { getAssignedLeads } from '@/lib/leads';
-import { LeadTable } from '../../components/leads/LeadTable';
 import LeadsFiltersClient from '@/app/components/leads/LeadsFiltersClient';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 
 export default async function LeadsPage() {
   const profile = await getUserProfile();
+
   if (!profile) {
     return (
       <div className="p-6">
@@ -17,25 +16,38 @@ export default async function LeadsPage() {
       </div>
     );
   }
-  const { data: leads } = await getAssignedLeads(profile.id, profile.role);
-  // Sort leads: due/overdue first, then upcoming/nulls
+
+  const supabase = await import('@/lib/supabase/server');
+  const client = await supabase.createSupabaseServerClient();
+
+  const { data: leads } = await client
+    .from('leads')
+    .select(`*, assigned_user:profiles!leads_assigned_user_id_fkey(id, full_name, username)`)
+    .order('follow_up_date', { ascending: true });
+
   const sortedLeads = (leads || []).slice().sort((a, b) => {
     if (!a.follow_up_date) return 1;
     if (!b.follow_up_date) return -1;
     return new Date(a.follow_up_date).getTime() - new Date(b.follow_up_date).getTime();
   });
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div className="space-y-1">
           <h1 className="text-2xl font-semibold tracking-tight">Leads</h1>
         </div>
+
         <Link href="/dashboard/leads/new">
           <Button type="button">New Lead</Button>
         </Link>
       </div>
-      <LeadsFiltersClient />
-      <LeadTable leads={sortedLeads || []} />
+
+      <LeadsFiltersClient
+        initialLeads={sortedLeads || []}
+        currentUserId={profile.id}
+        currentRole={profile.role}
+      />
     </div>
   );
 }

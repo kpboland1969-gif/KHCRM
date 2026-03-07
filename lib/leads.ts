@@ -9,9 +9,18 @@ export async function getDashboardStats(userId: string, role: UserRole) {
 
   const [total, followup, warm, clients] = await Promise.all([
     supabase.from('leads').select('id', { count: 'exact', head: true, ...leadFilter }),
-    supabase.from('leads').select('id', { count: 'exact', head: true, ...leadFilter }).lte('follow_up_date', new Date().toISOString()),
-    supabase.from('leads').select('id', { count: 'exact', head: true, ...leadFilter }).eq('status', 'warm_lead'),
-    supabase.from('leads').select('id', { count: 'exact', head: true, ...leadFilter }).eq('status', 'client'),
+    supabase
+      .from('leads')
+      .select('id', { count: 'exact', head: true, ...leadFilter })
+      .lte('follow_up_date', new Date().toISOString()),
+    supabase
+      .from('leads')
+      .select('id', { count: 'exact', head: true, ...leadFilter })
+      .eq('status', 'warm_lead'),
+    supabase
+      .from('leads')
+      .select('id', { count: 'exact', head: true, ...leadFilter })
+      .eq('status', 'client'),
   ]);
 
   return {
@@ -25,7 +34,11 @@ export async function getDashboardStats(userId: string, role: UserRole) {
 export async function getAssignedLeads(userId: string, role: UserRole) {
   const supabase = await createSupabaseServerClient();
   const isAdmin = role === 'admin';
-  let query = supabase.from('leads').select('*');
+  let query = supabase
+    .from('leads')
+    .select(
+      `id, company_name, contact_person, status, follow_up_date, assigned_user_id, assigned_user:profiles!leads_assigned_user_id_fkey(id, full_name, username)`,
+    );
   if (!isAdmin) {
     query = query.eq('assigned_user_id', userId);
   }
@@ -50,20 +63,31 @@ export async function getLeadById(id: string, userId: string, role: UserRole) {
 // PHASE 5: Follow-Up Engine
 export async function markLeadTouched(leadId: string, userId: string, username: string) {
   const supabase = await createSupabaseServerClient();
-  await supabase.from('leads').update({
-    last_touched_at: new Date().toISOString(),
-    last_touched_by: userId,
-    updated_at: new Date().toISOString(),
-  }).eq('id', leadId);
+  await supabase
+    .from('leads')
+    .update({
+      last_touched_at: new Date().toISOString(),
+      last_touched_by: userId,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', leadId);
   await addTouchNote(leadId, userId, username);
 }
 
-export async function updateLeadFollowUp(leadId: string, userId: string, username: string, followUpDate: string) {
+export async function updateLeadFollowUp(
+  leadId: string,
+  userId: string,
+  username: string,
+  followUpDate: string,
+) {
   const supabase = await createSupabaseServerClient();
-  await supabase.from('leads').update({
-    follow_up_date: followUpDate,
-    updated_at: new Date().toISOString(),
-  }).eq('id', leadId);
+  await supabase
+    .from('leads')
+    .update({
+      follow_up_date: followUpDate,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', leadId);
   await addFollowUpSetNote(leadId, userId, username, followUpDate);
 }
 
@@ -78,7 +102,7 @@ export async function listLeadsPaged({
   status,
   industry,
   dueOnly,
-  q
+  q,
 }: {
   userId: string;
   role: string;
@@ -109,11 +133,15 @@ export async function listLeadsPaged({
   // Search
   if (q && q.length >= 2) {
     const pattern = `%${q}%`;
-    query = query.or(`company_name.ilike.${pattern},contact_person.ilike.${pattern},email.ilike.${pattern},phone.ilike.${pattern}`);
+    query = query.or(
+      `company_name.ilike.${pattern},contact_person.ilike.${pattern},email.ilike.${pattern},phone.ilike.${pattern}`,
+    );
   }
   // Sorting
   if (sort === 'followup') {
-    query = query.order('follow_up_date', { ascending: dir === 'asc', nullsFirst: false }).order('id');
+    query = query
+      .order('follow_up_date', { ascending: dir === 'asc', nullsFirst: false })
+      .order('id');
   } else if (sort === 'created') {
     query = query.order('created_at', { ascending: dir === 'asc' ? true : false }).order('id');
   } else if (sort === 'company') {
@@ -129,6 +157,6 @@ export async function listLeadsPaged({
   if (error) throw new Error(error.message);
   return {
     leads: leads ?? [],
-    total: total ?? 0
+    total: total ?? 0,
   };
 }

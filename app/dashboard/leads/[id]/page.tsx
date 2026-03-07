@@ -96,7 +96,7 @@ function ActivityItem(props: { item: LeadActivityDisplayRow }) {
       </div>
 
       {item.type === 'note' ? (
-        <div className="mt-2 whitespace-pre-wrap text-sm text-white/80">{item.body || ''}</div>
+        <div className="mt-2 text-sm text-white/80 whitespace-pre-wrap">{item.body || ''}</div>
       ) : null}
 
       {item.type === 'view' ? (
@@ -106,7 +106,6 @@ function ActivityItem(props: { item: LeadActivityDisplayRow }) {
   );
 }
 
-// Email log fetch helper
 async function fetchEmailLogRows(supabase: any, leadId: string): Promise<EmailLogRow[]> {
   const { data, error } = await supabase
     .from('document_email_log')
@@ -114,10 +113,12 @@ async function fetchEmailLogRows(supabase: any, leadId: string): Promise<EmailLo
     .eq('lead_id', leadId)
     .order('sent_at', { ascending: false })
     .limit(25);
+
   if (error) {
     console.error('[LeadDetail] email log query error:', error);
     return [];
   }
+
   return Array.isArray(data)
     ? data.map((row: any) => ({
         id: String(row.id),
@@ -175,7 +176,7 @@ export default async function LeadDetailPage({ params }: PageProps) {
 
   const { data: lead, error: leadError } = await supabase
     .from('leads')
-    .select('*')
+    .select(`*, assigned_user:profiles!leads_assigned_user_id_fkey(id, full_name, username, email)`)
     .eq('id', leadId)
     .maybeSingle();
 
@@ -202,7 +203,6 @@ export default async function LeadDetailPage({ params }: PageProps) {
 
   const leadEmail = lead && typeof lead.email === 'string' ? lead.email : null;
 
-  // Documents query for EmailSlideOver
   const { data: docsRaw, error: docsErr } = await supabase
     .from('documents')
     .select('id,filename')
@@ -220,13 +220,13 @@ export default async function LeadDetailPage({ params }: PageProps) {
       }))
     : [];
 
-  // Email History fetch
   const emailLogRows = await fetchEmailLogRows(supabase, leadId);
   const docNameById: Record<string, string> = {};
+
   for (const doc of documents) {
     docNameById[doc.id] = doc.filename;
   }
-  // Prepare email history items for client panel
+
   const emailHistoryItems = emailLogRows.map((row) => ({
     ...row,
     attachments: Array.isArray(row.document_ids)
@@ -237,8 +237,6 @@ export default async function LeadDetailPage({ params }: PageProps) {
       : [],
   }));
 
-  // View logging (10-min dedupe). Never blocks rendering.
-  // View dedupe query and insert
   const cutoff = new Date(Date.now() - 10 * 60 * 1000).toISOString();
   const { data: recentView, error: recentViewError } = await supabase
     .from('lead_activity')
@@ -249,6 +247,7 @@ export default async function LeadDetailPage({ params }: PageProps) {
     .gte('created_at', cutoff)
     .order('created_at', { ascending: false })
     .limit(1);
+
   if (!recentViewError && (!Array.isArray(recentView) || recentView.length === 0)) {
     const { error: insertViewError } = await supabase.from('lead_activity').insert([
       {
@@ -258,6 +257,7 @@ export default async function LeadDetailPage({ params }: PageProps) {
         user_id: user.id,
       },
     ]);
+
     if (insertViewError) {
       logServerError('[LeadDetail] view logging error:', insertViewError);
     }
@@ -265,13 +265,13 @@ export default async function LeadDetailPage({ params }: PageProps) {
     logServerError('[LeadDetail] view logging error:', recentViewError);
   }
 
-  // Activity feed (newest first)
   const activityRes = await supabase
     .from('lead_activity')
     .select('id,lead_id,user_id,type,body,created_at')
     .eq('lead_id', leadId)
     .order('created_at', { ascending: false })
     .limit(50);
+
   if (activityRes.error) {
     logServerError('[LeadDetail] activity query error:', activityRes.error);
   }
@@ -304,6 +304,7 @@ export default async function LeadDetailPage({ params }: PageProps) {
         user_id: user.id,
       },
     ]);
+
     if (res.error) {
       logServerError('[LeadDetail] addNote insert error:', res.error);
     }
@@ -341,31 +342,23 @@ export default async function LeadDetailPage({ params }: PageProps) {
   ]);
   const followupDate = formatDateInput(followupDateRaw);
 
-  // Assigned user label (prefer assigned_to; fallback to assigned_user_id if legacy)
   const assignedUserId: string | null =
-    (typeof (lead as any).assigned_to === 'string' ? (lead as any).assigned_to : null) ??
     (typeof (lead as any).assigned_user_id === 'string' ? (lead as any).assigned_user_id : null) ??
     null;
 
-  let assignedUserLabel = 'Unassigned';
-  if (assignedUserId) {
-    const { data: assignedUser } = await supabase
-      .from('profiles')
-      .select('full_name,email')
-      .eq('id', assignedUserId)
-      .maybeSingle();
+  const assignedUserLabel =
+    (lead as any).assigned_user?.full_name ||
+    (lead as any).assigned_user?.username ||
+    (lead as any).assigned_user?.email ||
+    'Unassigned';
 
-    if (assignedUser) {
-      assignedUserLabel = assignedUser.full_name || assignedUser.email || 'Unassigned';
-    }
-  }
-  // Check admin
   const { data: profile } = await supabase
     .from('profiles')
-    .select('is_admin')
+    .select('role')
     .eq('id', user.id)
     .maybeSingle();
-  const isAdmin = !!profile?.is_admin;
+
+  const canManageAssignments = profile?.role === 'admin' || profile?.role === 'manager';
 
   return (
     <div className="p-6 space-y-8">
@@ -411,9 +404,10 @@ export default async function LeadDetailPage({ params }: PageProps) {
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-6 mb-4">
-          <div className="text-sm font-semibold mb-1">Assigned to</div>
-          {isAdmin ? (
+        <div className="mb-4 rounded-2xl border border-white/10 bg-white/[0.02] p-6">
+          <div className="mb-1 text-sm font-semibold">Assigned User</div>
+
+          {canManageAssignments ? (
             <AssigneeSelectClient leadId={leadId} assignedUserId={assignedUserId} />
           ) : (
             <div className="text-sm text-white/80">{assignedUserLabel}</div>
@@ -448,7 +442,6 @@ export default async function LeadDetailPage({ params }: PageProps) {
                       : `${(type ?? 'Activity').toString()} by ${actorLabel}`;
 
               const bodyText = ((item as any).body as string | undefined) ?? '';
-
               const createdAt = (item as any).created_at;
 
               return (
@@ -462,11 +455,11 @@ export default async function LeadDetailPage({ params }: PageProps) {
                   </div>
 
                   {type === 'note' ? (
-                    <div className="mt-2 whitespace-pre-wrap text-sm text-white/80">{bodyText}</div>
+                    <div className="mt-2 text-sm text-white/80 whitespace-pre-wrap">{bodyText}</div>
                   ) : null}
 
                   {type === 'email_sent' ? (
-                    <div className="mt-2 whitespace-pre-wrap text-sm text-white/80">{bodyText}</div>
+                    <div className="mt-2 text-sm text-white/80 whitespace-pre-wrap">{bodyText}</div>
                   ) : null}
 
                   {type === 'view' ? (

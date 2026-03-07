@@ -47,6 +47,14 @@ function getString(formData: FormData, key: string) {
   return s.length ? s : null;
 }
 
+function getAssigneeLabel(profile: {
+  full_name: string | null;
+  username: string | null;
+  email: string | null;
+}) {
+  return profile.full_name || profile.username || profile.email || 'Unassigned';
+}
+
 export default async function EditLeadPage({ params }: PageProps) {
   const resolvedParams = await Promise.resolve(params);
   const leadId = resolvedParams?.id as string | undefined;
@@ -86,10 +94,18 @@ export default async function EditLeadPage({ params }: PageProps) {
     );
   }
 
+  const { data: actorProfile } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', user.id)
+    .maybeSingle();
+
+  const canManageAssignments = actorProfile?.role === 'admin' || actorProfile?.role === 'manager';
+
   const { data: lead, error: leadError } = await supabase
     .from('leads')
     .select(
-      'id,company_name,contact_person,title,phone,email,website,address1,address2,city,state,zip,industry,status,follow_up_date',
+      'id,company_name,contact_person,title,phone,email,website,address1,address2,city,state,zip,industry,status,follow_up_date,assigned_user_id',
     )
     .eq('id', leadId)
     .maybeSingle();
@@ -109,8 +125,20 @@ export default async function EditLeadPage({ params }: PageProps) {
     );
   }
 
+  const { data: profileRows } = canManageAssignments
+    ? await supabase
+        .from('profiles')
+        .select('id,full_name,username,email,disabled')
+        .order('full_name', { ascending: true })
+    : { data: [] as any[] };
+
+  const assignableUsers = Array.isArray(profileRows)
+    ? profileRows.filter((profile) => !profile.disabled)
+    : [];
+
   async function updateLead(formData: FormData) {
     'use server';
+
     if (!leadId || typeof leadId !== 'string') {
       throw new Error('Invalid leadId');
     }
@@ -125,19 +153,24 @@ export default async function EditLeadPage({ params }: PageProps) {
       redirect('/login');
     }
 
-    // Read current values so we can log meaningful activity if changed.
+    const { data: actorProfile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .maybeSingle();
+
+    const canManageAssignments = actorProfile?.role === 'admin' || actorProfile?.role === 'manager';
+
     const { data: before, error: beforeError } = await supabase
       .from('leads')
-      .select('status,follow_up_date')
+      .select('status,follow_up_date,assigned_user_id')
       .eq('id', leadId)
       .maybeSingle();
 
     if (beforeError) {
       console.error('[EditLead] before read error:', beforeError);
-      // Continue anyway; we can still save the lead.
     }
 
-    // Build patch object (only fields we edit here)
     const patch: Record<string, any> = {
       company_name: getString(formData, 'company_name'),
       contact_person: getString(formData, 'contact_person'),
@@ -154,25 +187,29 @@ export default async function EditLeadPage({ params }: PageProps) {
       status: getString(formData, 'status'),
     };
 
-    // followup_at comes from <input type="date"> => YYYY-MM-DD
     const followupDate = getString(formData, 'followup_at');
-    // DB column is follow_up_date (per Supabase error/hint)
     patch.follow_up_date = followupDate ? `${followupDate}T00:00:00.000Z` : null;
+
+    if (canManageAssignments) {
+      patch.assigned_user_id = getString(formData, 'assigned_user_id');
+    }
 
     const nextStatus = (patch.status ?? null) as string | null;
     const nextFollowUpDate = (patch.follow_up_date ?? null) as string | null;
+    const nextAssignedUserId = canManageAssignments
+      ? ((patch.assigned_user_id ?? null) as string | null)
+      : ((before?.assigned_user_id ?? null) as string | null);
 
     const { error } = await supabase.from('leads').update(patch).eq('id', leadId);
 
     if (error) {
       console.error('[EditLead] update error:', error);
-      // Keep user on edit page if update fails
       redirect(`/dashboard/leads/${leadId}/edit?error=save_failed`);
     }
 
-    // Phase 4: auto-log status/follow-up changes to lead_activity.
     const prevStatus = before?.status ?? null;
     const prevFollowUp = before?.follow_up_date ?? null;
+    const prevAssignedUserId = before?.assigned_user_id ?? null;
 
     const activityRows: Array<{
       lead_id: string;
@@ -202,10 +239,43 @@ export default async function EditLeadPage({ params }: PageProps) {
       });
     }
 
+    if (prevAssignedUserId !== nextAssignedUserId) {
+      const idsToLookup = [prevAssignedUserId, nextAssignedUserId].filter(
+        (value): value is string => Boolean(value),
+      );
+
+      const labelById: Record<string, string> = {};
+
+      if (idsToLookup.length > 0) {
+        const { data: assigneeRows } = await supabase
+          .from('profiles')
+          .select('id,full_name,username,email')
+          .in('id', idsToLookup);
+
+        for (const profile of assigneeRows || []) {
+          labelById[profile.id] = getAssigneeLabel(profile);
+        }
+      }
+
+      const fromLabel = prevAssignedUserId
+        ? labelById[prevAssignedUserId] || 'Unassigned'
+        : 'Unassigned';
+      const toLabel = nextAssignedUserId
+        ? labelById[nextAssignedUserId] || 'Unassigned'
+        : 'Unassigned';
+
+      activityRows.push({
+        lead_id: leadId,
+        user_id: user.id,
+        type: 'assignment_change',
+        body: `Assigned user changed from ${fromLabel} to ${toLabel}.`,
+      });
+    }
+
     if (activityRows.length > 0) {
       const { error: actErr } = await supabase.from('lead_activity').insert(activityRows);
+
       if (actErr) {
-        // Never block the save flow for logging problems.
         console.error('[EditLead] activity insert error:', actErr);
       }
     }
@@ -213,7 +283,6 @@ export default async function EditLeadPage({ params }: PageProps) {
     redirect(`/dashboard/leads/${leadId}`);
   }
 
-  // Convert follow_up_date to YYYY-MM-DD for <input type="date">
   const followupDateValue =
     (lead as any).follow_up_date && !Number.isNaN(new Date((lead as any).follow_up_date).getTime())
       ? new Date((lead as any).follow_up_date).toISOString().slice(0, 10)
@@ -391,6 +460,24 @@ export default async function EditLeadPage({ params }: PageProps) {
                 ))}
               </select>
             </div>
+
+            {canManageAssignments ? (
+              <div className="space-y-2">
+                <div className={labelClassName()}>Assigned User</div>
+                <select
+                  name="assigned_user_id"
+                  defaultValue={((lead as any).assigned_user_id ?? '') as string}
+                  className={inputClassName()}
+                >
+                  <option value="">Unassigned</option>
+                  {assignableUsers.map((profile) => (
+                    <option key={profile.id} value={profile.id}>
+                      {getAssigneeLabel(profile)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : null}
 
             <div className="space-y-2">
               <div className={labelClassName()}>Follow-up Date</div>
