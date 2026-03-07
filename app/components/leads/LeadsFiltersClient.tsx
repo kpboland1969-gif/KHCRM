@@ -238,7 +238,7 @@ export default function LeadsFiltersClient({
       {loading && <div className="mb-2">Loading leads...</div>}
       {error && <div className="mb-2 text-red-500">{error}</div>}
 
-      <LeadTable leads={visibleLeads} />
+      <LeadTable leads={visibleLeads} currentUserId={currentUserId} />
 
       <PaginationControls
         page={page}

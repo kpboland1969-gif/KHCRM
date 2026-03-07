@@ -4,30 +4,64 @@ import { addTouchNote, addFollowUpSetNote } from './notes';
 
 export async function getDashboardStats(userId: string, role: UserRole) {
   const supabase = await createSupabaseServerClient();
+
   const isAdmin = role === 'admin';
   const leadFilter = isAdmin ? {} : { assigned_user_id: userId };
 
-  const [total, followup, warm, clients] = await Promise.all([
-    supabase.from('leads').select('id', { count: 'exact', head: true, ...leadFilter }),
-    supabase
-      .from('leads')
-      .select('id', { count: 'exact', head: true, ...leadFilter })
-      .lte('follow_up_date', new Date().toISOString()),
-    supabase
-      .from('leads')
-      .select('id', { count: 'exact', head: true, ...leadFilter })
-      .eq('status', 'warm_lead'),
-    supabase
-      .from('leads')
-      .select('id', { count: 'exact', head: true, ...leadFilter })
-      .eq('status', 'client'),
-  ]);
+  const now = new Date();
+  const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
+  const [total, followupDue, warm, clients, newThisWeek, overdueFollowups, unassigned] =
+    await Promise.all([
+      supabase.from('leads').select('id', { count: 'exact', head: true, ...leadFilter }),
+
+      supabase
+        .from('leads')
+        .select('id', { count: 'exact', head: true, ...leadFilter })
+        .lte('follow_up_date', now.toISOString()),
+
+      supabase
+        .from('leads')
+        .select('id', { count: 'exact', head: true, ...leadFilter })
+        .eq('status', 'warm_lead'),
+
+      supabase
+        .from('leads')
+        .select('id', { count: 'exact', head: true, ...leadFilter })
+        .eq('status', 'client'),
+
+      supabase
+        .from('leads')
+        .select('id', { count: 'exact', head: true, ...leadFilter })
+        .gte('created_at', weekAgo),
+
+      supabase
+        .from('leads')
+        .select('id', { count: 'exact', head: true, ...leadFilter })
+        .lte('follow_up_date', now.toISOString())
+        .neq('status', 'client'),
+
+      supabase
+        .from('leads')
+        .select('id', { count: 'exact', head: true })
+        .is('assigned_user_id', null),
+    ]);
+
+  const totalCount = total.count ?? 0;
+  const clientsCount = clients.count ?? 0;
+
+  const conversionRate = totalCount > 0 ? Math.round((clientsCount / totalCount) * 100) : 0;
 
   return {
-    total: total.count ?? 0,
-    followup: followup.count ?? 0,
+    total: totalCount,
+    followup: followupDue.count ?? 0,
     warm: warm.count ?? 0,
-    clients: clients.count ?? 0,
+    clients: clientsCount,
+
+    newThisWeek: newThisWeek.count ?? 0,
+    overdueFollowups: overdueFollowups.count ?? 0,
+    unassigned: unassigned.count ?? 0,
+    conversionRate,
   };
 }
 
