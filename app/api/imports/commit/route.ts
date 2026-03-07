@@ -137,7 +137,7 @@ export async function POST(request: NextRequest) {
     if (email) existingEmails.add(email);
     if (phone) existingPhones.add(phone);
 
-    // Remove notes from leads insert payload
+    // Ensure industry is always set for leads insert
     rowsToInsert.push({
       company_name: row.company_name,
       contact_person: row.contact_person,
@@ -150,7 +150,7 @@ export async function POST(request: NextRequest) {
       city: normalizeValue(row.city),
       state: normalizeValue(row.state),
       zip: normalizeValue(row.zip),
-      industry: normalizeValue(row.industry),
+      industry: normalizeValue(row.industry) || 'other',
       status: normalizeValue(row.status) || 'new_lead',
       assigned_user_id: row.assigned_user_id || null,
       follow_up_date: row.follow_up_date || null,
