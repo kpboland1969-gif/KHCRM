@@ -155,25 +155,6 @@ export default async function LeadDetailPage({ params }: PageProps) {
   } = await supabase.auth.getUser();
 
   if (userError) {
-    // Lead-specific uploaded documents
-    const { data: leadDocsRaw, error: leadDocsError } = await supabase
-      .from('lead_uploaded_documents')
-      .select('id, filename, storage_path, created_at')
-      .eq('lead_id', leadId)
-      .order('created_at', { ascending: false });
-
-    if (leadDocsError) {
-      console.error('[LeadDetail] lead documents query error:', leadDocsError);
-    }
-
-    const leadDocuments = Array.isArray(leadDocsRaw)
-      ? leadDocsRaw.map((d: any) => ({
-          id: String(d.id),
-          filename: String(d.filename ?? 'Document'),
-          storage_path: String(d.storage_path),
-          created_at: d.created_at,
-        }))
-      : [];
     logServerError('[LeadDetail] auth.getUser error:', userError);
     return (
       <div className="p-6">
@@ -240,7 +221,6 @@ export default async function LeadDetailPage({ params }: PageProps) {
       }))
     : [];
 
-  // Lead-specific uploaded documents
   const { data: leadDocsRaw, error: leadDocsError } = await supabase
     .from('lead_uploaded_documents')
     .select('id, filename, storage_path, created_at')
@@ -443,9 +423,9 @@ export default async function LeadDetailPage({ params }: PageProps) {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <div className="mb-4 rounded-2xl border border-white/10 bg-white/[0.02] p-6">
-          <div className="mb-1 text-sm font-semibold">Assigned User</div>
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+          <div className="mb-2 text-sm font-semibold">Assigned User</div>
 
           {canManageAssignments ? (
             <AssigneeSelectClient leadId={leadId} assignedUserId={assignedUserId} />
@@ -454,17 +434,17 @@ export default async function LeadDetailPage({ params }: PageProps) {
           )}
         </div>
 
-        <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
+        <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
           <div className="flex items-baseline justify-between gap-4">
             <div className="text-lg font-semibold">Activity</div>
             <div className="text-xs text-white/50">{activity.length} items</div>
           </div>
 
-          <div className="mt-4 space-y-3">
+          <div className="mt-3">
             {activity.length === 0 ? (
               <div className="text-sm text-white/70">No activity yet.</div>
             ) : (
-              <div className="max-h-[420px] space-y-3 overflow-y-auto pr-2">
+              <div className="max-h-[260px] space-y-2 overflow-y-auto pr-2">
                 {activity.map((item) => {
                   const actorLabel = getActorLabel({
                     actorId: (item as any).user_id,
@@ -486,28 +466,30 @@ export default async function LeadDetailPage({ params }: PageProps) {
 
                   return (
                     <div
-                      className="rounded-xl border border-white/10 bg-white/[0.02] p-4"
+                      className="rounded-xl border border-white/10 bg-white/[0.02] p-3"
                       key={(item as any).id ?? `${type ?? 'activity'}-${String(createdAt ?? '')}`}
                     >
                       <div className="flex items-start justify-between gap-4">
-                        <div className="text-sm font-medium text-white/90">{title}</div>
+                        <div className="text-sm font-medium leading-tight text-white/90">
+                          {title}
+                        </div>
                         <div className="text-xs text-white/50">{formatWhen(createdAt)}</div>
                       </div>
 
                       {type === 'note' ? (
-                        <div className="mt-2 whitespace-pre-wrap text-sm text-white/80">
+                        <div className="mt-1 whitespace-pre-wrap text-sm text-white/80">
                           {bodyText}
                         </div>
                       ) : null}
 
                       {type === 'email_sent' ? (
-                        <div className="mt-2 whitespace-pre-wrap text-sm text-white/80">
+                        <div className="mt-1 whitespace-pre-wrap text-sm text-white/80">
                           {bodyText}
                         </div>
                       ) : null}
 
                       {type === 'view' ? (
-                        <div className="mt-2 text-sm text-white/70">This lead was opened.</div>
+                        <div className="mt-1 text-sm text-white/70">This lead was opened.</div>
                       ) : null}
                     </div>
                   );
@@ -518,7 +500,6 @@ export default async function LeadDetailPage({ params }: PageProps) {
         </div>
       </div>
 
-      {/* Lead Documents */}
       <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
         <div className="flex items-center justify-between">
           <div className="text-lg font-semibold">Lead Documents</div>
