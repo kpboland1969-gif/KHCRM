@@ -5,16 +5,7 @@ import LeadDocumentsClient from '@/components/leads/LeadDocumentsClient';
 import EmailSlideOver from '@/components/leads/EmailSlideOver';
 import { redirect } from 'next/navigation';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
-import {
-  attachActorLabels,
-  fetchLeadActivity,
-  getActorLabelMap,
-  insertLeadNote,
-  logLeadViewIfNeededServer,
-  logServerError,
-} from '@/lib/leads/activity.server';
-import type { LeadActivityDisplayRow } from '@/lib/leads/activity.server';
-import EmailHistoryPanelClient from '@/components/leads/EmailHistoryPanelClient';
+import { logServerError } from '@/lib/leads/activity.server';
 import AssigneeSelectClient from '@/components/leads/AssigneeSelectClient';
 
 function getActorLabel(params: { actorId: string | null | undefined; currentUserId: string }) {
@@ -33,15 +24,7 @@ function isUuidLike(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 }
 
-function pick(lead: any, keys: string[]) {
-  for (const k of keys) {
-    const v = lead?.[k];
-    if (v !== null && v !== undefined && String(v).length > 0) return v;
-  }
-  return '';
-}
-
-function formatDateInput(value: any) {
+function formatDateInput(value: string | null | undefined) {
   if (!value) return '';
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return '';
@@ -51,7 +34,7 @@ function formatDateInput(value: any) {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-function formatWhen(value: any) {
+function formatWhen(value: string | null | undefined) {
   if (!value) return '';
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return '';
@@ -60,7 +43,7 @@ function formatWhen(value: any) {
 
 type LockedFieldProps = {
   label: string;
-  value: any;
+  value: string | null | undefined;
   type?: string;
 };
 
@@ -81,31 +64,17 @@ function LockedField(props: LockedFieldProps) {
   );
 }
 
-function ActivityItem(props: { item: LeadActivityDisplayRow }) {
-  const { item } = props;
-
-  const titleBase =
-    item.type === 'note' ? 'Note' : item.type === 'view' ? 'Viewed' : String(item.type);
-
-  const title = `${titleBase} by ${item.actor_label}`;
-
-  return (
-    <div className="rounded-xl border border-white/10 bg-white/[0.02] p-4">
-      <div className="flex items-start justify-between gap-4">
-        <div className="text-sm font-medium text-white/90">{title}</div>
-        <div className="text-xs text-white/50">{formatWhen(item.created_at)}</div>
-      </div>
-
-      {item.type === 'note' ? (
-        <div className="mt-2 text-sm text-white/80 whitespace-pre-wrap">{item.body || ''}</div>
-      ) : null}
-
-      {item.type === 'view' ? (
-        <div className="mt-2 text-sm text-white/70">This lead was opened.</div>
-      ) : null}
-    </div>
-  );
-}
+type EmailLogRow = {
+  id: string;
+  sent_at: string | null;
+  to_email: string | null;
+  subject: string | null;
+  status: string | null;
+  error: string | null;
+  provider_message_id: string | null;
+  sent_by: string | null;
+  document_ids: unknown[] | null;
+};
 
 async function fetchEmailLogRows(supabase: any, leadId: string): Promise<EmailLogRow[]> {
   const { data, error } = await supabase
@@ -202,7 +171,7 @@ export default async function LeadDetailPage({ params }: PageProps) {
     );
   }
 
-  const leadEmail = lead && typeof lead.email === 'string' ? lead.email : null;
+  const leadEmail = typeof lead.email === 'string' ? lead.email : null;
 
   const { data: docsRaw, error: docsErr } = await supabase
     .from('documents')
@@ -298,73 +267,25 @@ export default async function LeadDetailPage({ params }: PageProps) {
 
   const activity = Array.isArray(activityRes.data) ? activityRes.data : [];
 
-  async function addNote(formData: FormData) {
-    'use server';
+  const companyName = typeof lead.company_name === 'string' ? lead.company_name : '';
+  const contactPerson = typeof lead.contact_person === 'string' ? lead.contact_person : '';
+  const title = typeof lead.title === 'string' ? lead.title : '';
+  const phone = typeof lead.phone === 'string' ? lead.phone : '';
+  const email = typeof lead.email === 'string' ? lead.email : '';
+  const website = typeof lead.website === 'string' ? lead.website : '';
+  const address1 = typeof lead.address1 === 'string' ? lead.address1 : '';
+  const address2 = typeof lead.address2 === 'string' ? lead.address2 : '';
+  const city = typeof lead.city === 'string' ? lead.city : '';
+  const state = typeof lead.state === 'string' ? lead.state : '';
+  const zip = typeof lead.zip === 'string' ? lead.zip : '';
+  const industry = typeof lead.industry === 'string' ? lead.industry : '';
+  const status = typeof lead.status === 'string' ? lead.status : '';
+  const followupDate = formatDateInput(
+    typeof lead.follow_up_date === 'string' ? lead.follow_up_date : null,
+  );
 
-    const supabase = await createSupabaseServerClient();
-
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
-
-    if (userError || !user) {
-      logServerError('[LeadDetail] addNote auth error:', userError);
-      redirect(`/dashboard/leads/${leadId}`);
-    }
-
-    const body = String(formData.get('note') ?? '').trim();
-    if (!body) redirect(`/dashboard/leads/${leadId}`);
-
-    const res = await supabase.from('lead_activity').insert([
-      {
-        lead_id: leadId,
-        type: 'note',
-        body,
-        user_id: user.id,
-      },
-    ]);
-
-    if (res.error) {
-      logServerError('[LeadDetail] addNote insert error:', res.error);
-    }
-
-    redirect(`/dashboard/leads/${leadId}`);
-  }
-
-  const l: any = lead;
-
-  const companyName = pick(l, ['company_name', 'companyName', 'company', 'name']);
-  const contactPerson = pick(l, [
-    'contact_person',
-    'contactPerson',
-    'contact_name',
-    'contactName',
-    'primary_contact',
-  ]);
-  const title = pick(l, ['title', 'job_title', 'jobTitle']);
-  const phone = pick(l, ['phone', 'phone_number', 'phoneNumber']);
-  const email = pick(l, ['email']);
-  const website = pick(l, ['website', 'url']);
-  const address1 = pick(l, ['address_1', 'address1', 'address_line_1', 'addressLine1']);
-  const address2 = pick(l, ['address_2', 'address2', 'address_line_2', 'addressLine2']);
-  const city = pick(l, ['city']);
-  const state = pick(l, ['state', 'province', 'region']);
-  const zip = pick(l, ['zip', 'postal_code', 'postalCode']);
-  const industry = pick(l, ['industry']);
-  const status = pick(l, ['status']);
-  const followupDateRaw = pick(l, [
-    'followup_at',
-    'followupAt',
-    'follow_up_at',
-    'follow_up_date',
-    'followup_date',
-  ]);
-  const followupDate = formatDateInput(followupDateRaw);
-
-  const assignedUserId: string | null =
-    (typeof (lead as any).assigned_user_id === 'string' ? (lead as any).assigned_user_id : null) ??
-    null;
+  const assignedUserId =
+    typeof (lead as any).assigned_user_id === 'string' ? (lead as any).assigned_user_id : null;
 
   const assignedUserLabel =
     (lead as any).assigned_user?.full_name ||
@@ -514,15 +435,3 @@ export default async function LeadDetailPage({ params }: PageProps) {
     </div>
   );
 }
-
-type EmailLogRow = {
-  id: string;
-  sent_at: string | null;
-  to_email: string | null;
-  subject: string | null;
-  status: string | null;
-  error: string | null;
-  provider_message_id: string | null;
-  sent_by: string | null;
-  document_ids: unknown[] | null;
-};
