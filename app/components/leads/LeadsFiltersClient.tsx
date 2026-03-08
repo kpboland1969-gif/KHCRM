@@ -90,10 +90,23 @@ export default function LeadsFiltersClient({
       return;
     }
 
-    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+    }
 
     debounceRef.current = setTimeout(() => {
-      fetchLeads({ page, pageSize, sort, dir, status, industry, dueOnly, q, scope });
+      fetchLeads({
+        page,
+        pageSize,
+        sort,
+        dir,
+        status,
+        industry,
+        dueOnly,
+        q,
+        scope,
+        assignedFilter,
+      });
     }, 300);
 
     return () => {
@@ -102,7 +115,19 @@ export default function LeadsFiltersClient({
         debounceRef.current = null;
       }
     };
-  }, [page, pageSize, sort, dir, status, industry, dueOnly, q, scope, initialLeads.length]);
+  }, [
+    page,
+    pageSize,
+    sort,
+    dir,
+    status,
+    industry,
+    dueOnly,
+    q,
+    scope,
+    assignedFilter,
+    initialLeads.length,
+  ]);
 
   const visibleLeads = useMemo(() => {
     return leads.filter((lead) => {
@@ -157,10 +182,10 @@ export default function LeadsFiltersClient({
           }}
           options={[
             { value: 'all', label: 'All Industries' },
-            { value: 'tech', label: 'Tech' },
-            { value: 'finance', label: 'Finance' },
-            { value: 'health', label: 'Health' },
-            { value: 'other', label: 'Other' },
+            { value: 'construction', label: 'Construction' },
+            { value: 'subcontractor', label: 'Subcontractor' },
+            { value: 'manufacturing', label: 'Manufacturing' },
+            { value: 'wholesale', label: 'Wholesale' },
           ]}
           className={formSelectClass}
         />

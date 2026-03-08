@@ -143,6 +143,8 @@ export async function listLeadsPaged({
   industry,
   dueOnly,
   q,
+  scope,
+  assignedFilter,
 }: {
   userId: string;
   role: string;
@@ -154,12 +156,46 @@ export async function listLeadsPaged({
   industry?: string;
   dueOnly?: boolean;
   q?: string;
+  scope?: string;
+  assignedFilter?: string;
 }) {
   const supabase = await createSupabaseServerClient();
 
-  let query = supabase.from('leads').select('*', { count: 'exact' });
+  let query = supabase.from('leads').select(
+    `
+        *,
+        assigned_user:profiles!leads_assigned_user_id_fkey(id, full_name, username)
+      `,
+    { count: 'exact' },
+  );
 
-  if (role !== 'admin') {
+  const isAdmin = role === 'admin';
+  const isManager = role === 'manager';
+
+  if (isAdmin) {
+    if (scope === 'mine') {
+      query = query.eq('assigned_user_id', userId);
+    } else if (scope === 'unassigned') {
+      query = query.is('assigned_user_id', null);
+    }
+  } else if (isManager) {
+    if (scope === 'unassigned') {
+      query = query.is('assigned_user_id', null);
+    } else if (scope === 'all' || !scope) {
+      // Managers can oversee all visible leads.
+      // RLS remains the final source of truth for what "visible" means.
+    } else {
+      query = query.eq('assigned_user_id', userId);
+    }
+  } else {
+    query = query.eq('assigned_user_id', userId);
+  }
+
+  if (assignedFilter === 'assigned') {
+    query = query.not('assigned_user_id', 'is', null);
+  } else if (assignedFilter === 'unassigned') {
+    query = query.is('assigned_user_id', null);
+  } else if (assignedFilter === 'mine') {
     query = query.eq('assigned_user_id', userId);
   }
 

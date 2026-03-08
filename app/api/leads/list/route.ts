@@ -4,16 +4,21 @@ import { listLeadsPaged } from '@/lib/leads';
 
 export async function GET(req: NextRequest) {
   const profile = await getUserProfile();
-  if (!profile) return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
+
+  if (!profile) {
+    return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
+  }
+
   const url = new URL(req.url);
+
   const page = Math.max(1, parseInt(url.searchParams.get('page') || '1', 10));
-  const pageSize = [25, 50, 100].includes(Number(url.searchParams.get('pageSize'))) ? Number(url.searchParams.get('pageSize')) : 25;
+  const pageSize = [25, 50, 100].includes(Number(url.searchParams.get('pageSize')))
+    ? Number(url.searchParams.get('pageSize'))
+    : 25;
 
   const rawSort = url.searchParams.get('sort') ?? 'followup';
   const sort: 'followup' | 'created' | 'company' =
-    rawSort === 'followup' || rawSort === 'created' || rawSort === 'company'
-      ? rawSort
-      : 'followup';
+    rawSort === 'followup' || rawSort === 'created' || rawSort === 'company' ? rawSort : 'followup';
 
   const rawDir = url.searchParams.get('dir') ?? 'asc';
   const dir: 'asc' | 'desc' = rawDir === 'asc' || rawDir === 'desc' ? rawDir : 'asc';
@@ -22,6 +27,9 @@ export async function GET(req: NextRequest) {
   const industry = url.searchParams.get('industry') || undefined;
   const dueOnly = url.searchParams.get('dueOnly') === 'true';
   const q = url.searchParams.get('q') || undefined;
+  const scope = url.searchParams.get('scope') || undefined;
+  const assignedFilter = url.searchParams.get('assignedFilter') || undefined;
+
   try {
     const { leads, total } = await listLeadsPaged({
       userId: profile.id,
@@ -33,18 +41,25 @@ export async function GET(req: NextRequest) {
       status,
       industry,
       dueOnly,
-      q
+      q,
+      scope,
+      assignedFilter,
     });
+
     const totalPages = Math.max(1, Math.ceil(total / pageSize));
+
     return NextResponse.json({
       ok: true,
       page,
       pageSize,
       total,
       totalPages,
-      leads
+      leads,
     });
   } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e?.message || 'Failed to fetch leads' }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: e?.message || 'Failed to fetch leads' },
+      { status: 500 },
+    );
   }
 }
