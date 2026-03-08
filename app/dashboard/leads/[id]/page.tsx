@@ -3,6 +3,7 @@ import 'server-only';
 import Link from 'next/link';
 import LeadDocumentsClient from '@/components/leads/LeadDocumentsClient';
 import EmailSlideOver from '@/components/leads/EmailSlideOver';
+import { redirect } from 'next/navigation';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { logServerError } from '@/lib/leads/activity.server';
 import AssigneeSelectClient from '@/components/leads/AssigneeSelectClient';
@@ -226,7 +227,7 @@ export default async function LeadDetailPage({ params }: PageProps) {
       {
         lead_id: leadId,
         type: 'view',
-        body: null,
+        body: 'This lead was opened.',
         user_id: user.id,
       },
     ]);
@@ -250,6 +251,43 @@ export default async function LeadDetailPage({ params }: PageProps) {
   }
 
   const activity = Array.isArray(activityRes.data) ? activityRes.data : [];
+
+  async function addNote(formData: FormData) {
+    'use server';
+
+    const supabase = await createSupabaseServerClient();
+
+    const {
+      data: { user },
+      error: addNoteUserError,
+    } = await supabase.auth.getUser();
+
+    if (addNoteUserError || !user) {
+      logServerError('[LeadDetail] addNote auth error:', addNoteUserError);
+      redirect(`/dashboard/leads/${leadId}`);
+    }
+
+    const body = String(formData.get('note') ?? '').trim();
+
+    if (!body) {
+      redirect(`/dashboard/leads/${leadId}`);
+    }
+
+    const { error } = await supabase.from('lead_activity').insert([
+      {
+        lead_id: leadId,
+        user_id: user.id,
+        type: 'note',
+        body,
+      },
+    ]);
+
+    if (error) {
+      logServerError('[LeadDetail] addNote insert error:', error);
+    }
+
+    redirect(`/dashboard/leads/${leadId}`);
+  }
 
   const companyName = typeof lead.company_name === 'string' ? lead.company_name : '';
   const contactPerson = typeof lead.contact_person === 'string' ? lead.contact_person : '';
@@ -344,6 +382,23 @@ export default async function LeadDetailPage({ params }: PageProps) {
             <div className="text-xs text-white/50">{activity.length} items</div>
           </div>
 
+          <form action={addNote} className="mt-3 space-y-3">
+            <textarea
+              name="note"
+              rows={3}
+              placeholder="Add a manual note..."
+              className="w-full rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-white outline-none focus:border-white/20"
+            />
+            <div className="flex justify-end">
+              <button
+                type="submit"
+                className="inline-flex h-10 items-center justify-center rounded-xl border border-white/10 bg-white/[0.06] px-4 text-sm font-medium text-white hover:bg-white/[0.10]"
+              >
+                Add Note
+              </button>
+            </div>
+          </form>
+
           <div className="mt-3">
             {activity.length === 0 ? (
               <div className="text-sm text-white/70">No activity yet.</div>
@@ -363,7 +418,9 @@ export default async function LeadDetailPage({ params }: PageProps) {
                         ? `Note by ${actorLabel}`
                         : type === 'email_sent'
                           ? `Email sent by ${actorLabel}`
-                          : `${(type ?? 'Activity').toString()} by ${actorLabel}`;
+                          : type === 'email_resent'
+                            ? `Email resent by ${actorLabel}`
+                            : `${(type ?? 'Activity').toString()} by ${actorLabel}`;
 
                   const bodyText = ((item as any).body as string | undefined) ?? '';
                   const createdAt = (item as any).created_at;
@@ -386,14 +443,16 @@ export default async function LeadDetailPage({ params }: PageProps) {
                         </div>
                       ) : null}
 
-                      {type === 'email_sent' ? (
+                      {type === 'email_sent' || type === 'email_resent' ? (
                         <div className="mt-1 whitespace-pre-wrap text-sm text-white/80">
                           {bodyText}
                         </div>
                       ) : null}
 
                       {type === 'view' ? (
-                        <div className="mt-1 text-sm text-white/70">This lead was opened.</div>
+                        <div className="mt-1 text-sm text-white/70">
+                          {bodyText || 'This lead was opened.'}
+                        </div>
                       ) : null}
                     </div>
                   );
