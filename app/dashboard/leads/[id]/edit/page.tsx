@@ -5,7 +5,7 @@ import { redirect } from 'next/navigation';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
 type PageProps = {
-  params: any;
+  params: Promise<{ id: string }>;
 };
 
 const STATUS_OPTIONS: Array<{ value: string; label: string }> = [
@@ -56,8 +56,7 @@ function getAssigneeLabel(profile: {
 }
 
 export default async function EditLeadPage({ params }: PageProps) {
-  const resolvedParams = await Promise.resolve(params);
-  const leadId = resolvedParams?.id as string | undefined;
+  const { id: leadId } = await params;
 
   if (!leadId || !isUuidLike(leadId)) {
     return (
@@ -130,7 +129,15 @@ export default async function EditLeadPage({ params }: PageProps) {
         .from('profiles')
         .select('id,full_name,username,email,disabled')
         .order('full_name', { ascending: true })
-    : { data: [] as any[] };
+    : {
+        data: [] as Array<{
+          id: string;
+          full_name: string | null;
+          username: string | null;
+          email: string | null;
+          disabled: boolean | null;
+        }>,
+      };
 
   const assignableUsers = Array.isArray(profileRows)
     ? profileRows.filter((profile) => !profile.disabled)
@@ -138,10 +145,6 @@ export default async function EditLeadPage({ params }: PageProps) {
 
   async function updateLead(formData: FormData) {
     'use server';
-
-    if (!leadId || typeof leadId !== 'string') {
-      throw new Error('Invalid leadId');
-    }
 
     const supabase = await createSupabaseServerClient();
 
@@ -171,7 +174,7 @@ export default async function EditLeadPage({ params }: PageProps) {
       console.error('[EditLead] before read error:', beforeError);
     }
 
-    const patch: Record<string, any> = {
+    const patch: Record<string, string | null> = {
       company_name: getString(formData, 'company_name'),
       contact_person: getString(formData, 'contact_person'),
       title: getString(formData, 'title'),
@@ -187,18 +190,18 @@ export default async function EditLeadPage({ params }: PageProps) {
       status: getString(formData, 'status'),
     };
 
-    const followupDate = getString(formData, 'followup_at');
-    patch.follow_up_date = followupDate ? `${followupDate}T00:00:00.000Z` : null;
+    const followUpDate = getString(formData, 'follow_up_date');
+    patch.follow_up_date = followUpDate ? `${followUpDate}T00:00:00.000Z` : null;
 
     if (canManageAssignments) {
       patch.assigned_user_id = getString(formData, 'assigned_user_id');
     }
 
-    const nextStatus = (patch.status ?? null) as string | null;
-    const nextFollowUpDate = (patch.follow_up_date ?? null) as string | null;
+    const nextStatus = patch.status ?? null;
+    const nextFollowUpDate = patch.follow_up_date ?? null;
     const nextAssignedUserId = canManageAssignments
-      ? ((patch.assigned_user_id ?? null) as string | null)
-      : ((before?.assigned_user_id ?? null) as string | null);
+      ? (patch.assigned_user_id ?? null)
+      : (before?.assigned_user_id ?? null);
 
     const { error } = await supabase.from('leads').update(patch).eq('id', leadId);
 
@@ -283,9 +286,9 @@ export default async function EditLeadPage({ params }: PageProps) {
     redirect(`/dashboard/leads/${leadId}`);
   }
 
-  const followupDateValue =
-    (lead as any).follow_up_date && !Number.isNaN(new Date((lead as any).follow_up_date).getTime())
-      ? new Date((lead as any).follow_up_date).toISOString().slice(0, 10)
+  const followUpDateValue =
+    lead.follow_up_date && !Number.isNaN(new Date(lead.follow_up_date).getTime())
+      ? new Date(lead.follow_up_date).toISOString().slice(0, 10)
       : '';
 
   return (
@@ -325,7 +328,7 @@ export default async function EditLeadPage({ params }: PageProps) {
               </div>
               <input
                 name="company_name"
-                defaultValue={(lead.company_name ?? '') as string}
+                defaultValue={lead.company_name ?? ''}
                 className={inputClassName()}
                 required
               />
@@ -337,7 +340,7 @@ export default async function EditLeadPage({ params }: PageProps) {
               </div>
               <input
                 name="contact_person"
-                defaultValue={(lead.contact_person ?? '') as string}
+                defaultValue={lead.contact_person ?? ''}
                 className={inputClassName()}
                 required
               />
@@ -345,20 +348,12 @@ export default async function EditLeadPage({ params }: PageProps) {
 
             <div className="space-y-2">
               <div className={labelClassName()}>Title</div>
-              <input
-                name="title"
-                defaultValue={(lead.title ?? '') as string}
-                className={inputClassName()}
-              />
+              <input name="title" defaultValue={lead.title ?? ''} className={inputClassName()} />
             </div>
 
             <div className="space-y-2">
               <div className={labelClassName()}>Phone</div>
-              <input
-                name="phone"
-                defaultValue={(lead.phone ?? '') as string}
-                className={inputClassName()}
-              />
+              <input name="phone" defaultValue={lead.phone ?? ''} className={inputClassName()} />
             </div>
 
             <div className="space-y-2">
@@ -366,7 +361,7 @@ export default async function EditLeadPage({ params }: PageProps) {
               <input
                 name="email"
                 type="email"
-                defaultValue={(lead.email ?? '') as string}
+                defaultValue={lead.email ?? ''}
                 className={inputClassName()}
               />
             </div>
@@ -375,7 +370,7 @@ export default async function EditLeadPage({ params }: PageProps) {
               <div className={labelClassName()}>Website</div>
               <input
                 name="website"
-                defaultValue={(lead.website ?? '') as string}
+                defaultValue={lead.website ?? ''}
                 className={inputClassName()}
               />
             </div>
@@ -384,7 +379,7 @@ export default async function EditLeadPage({ params }: PageProps) {
               <div className={labelClassName()}>Address 1</div>
               <input
                 name="address1"
-                defaultValue={(lead.address1 ?? '') as string}
+                defaultValue={lead.address1 ?? ''}
                 className={inputClassName()}
               />
             </div>
@@ -393,43 +388,31 @@ export default async function EditLeadPage({ params }: PageProps) {
               <div className={labelClassName()}>Address 2</div>
               <input
                 name="address2"
-                defaultValue={(lead.address2 ?? '') as string}
+                defaultValue={lead.address2 ?? ''}
                 className={inputClassName()}
               />
             </div>
 
             <div className="space-y-2">
               <div className={labelClassName()}>City</div>
-              <input
-                name="city"
-                defaultValue={(lead.city ?? '') as string}
-                className={inputClassName()}
-              />
+              <input name="city" defaultValue={lead.city ?? ''} className={inputClassName()} />
             </div>
 
             <div className="space-y-2">
               <div className={labelClassName()}>State</div>
-              <input
-                name="state"
-                defaultValue={(lead.state ?? '') as string}
-                className={inputClassName()}
-              />
+              <input name="state" defaultValue={lead.state ?? ''} className={inputClassName()} />
             </div>
 
             <div className="space-y-2">
               <div className={labelClassName()}>Zip</div>
-              <input
-                name="zip"
-                defaultValue={(lead.zip ?? '') as string}
-                className={inputClassName()}
-              />
+              <input name="zip" defaultValue={lead.zip ?? ''} className={inputClassName()} />
             </div>
 
             <div className="space-y-2">
               <div className={labelClassName()}>Industry</div>
               <select
                 name="industry"
-                defaultValue={(lead.industry ?? '') as string}
+                defaultValue={lead.industry ?? ''}
                 className={inputClassName()}
               >
                 <option value="" disabled>
@@ -445,11 +428,7 @@ export default async function EditLeadPage({ params }: PageProps) {
 
             <div className="space-y-2">
               <div className={labelClassName()}>Status</div>
-              <select
-                name="status"
-                defaultValue={(lead.status ?? '') as string}
-                className={inputClassName()}
-              >
+              <select name="status" defaultValue={lead.status ?? ''} className={inputClassName()}>
                 <option value="" disabled>
                   Select status
                 </option>
@@ -466,7 +445,7 @@ export default async function EditLeadPage({ params }: PageProps) {
                 <div className={labelClassName()}>Assigned User</div>
                 <select
                   name="assigned_user_id"
-                  defaultValue={((lead as any).assigned_user_id ?? '') as string}
+                  defaultValue={lead.assigned_user_id ?? ''}
                   className={inputClassName()}
                 >
                   <option value="">Unassigned</option>
@@ -482,9 +461,9 @@ export default async function EditLeadPage({ params }: PageProps) {
             <div className="space-y-2">
               <div className={labelClassName()}>Follow-up Date</div>
               <input
-                name="followup_at"
+                name="follow_up_date"
                 type="date"
-                defaultValue={followupDateValue}
+                defaultValue={followUpDateValue}
                 className={inputClassName()}
               />
             </div>

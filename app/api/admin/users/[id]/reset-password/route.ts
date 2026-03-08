@@ -1,46 +1,52 @@
-import { requireAdmin } from '@/lib/api/adminGuard';
-import { jsonOk, jsonErr, safeErrorMessage } from '@/lib/api/response';
-import { createSupabaseAdminClient } from '@/lib/supabase/admin';
+import { NextResponse } from 'next/server';
+import { createSupabaseServerClient } from '@/lib/supabase/server';
 
-export async function POST(
-  _req: Request,
-  context: { params: Promise<{ id: string }> },
-): Promise<Response> {
-  try {
-    const guard = await requireAdmin();
-    if (!guard.ok) return guard.res;
+type RouteContext = {
+  params: Promise<{ id: string }>;
+};
 
-    const { id } = await context.params;
-    if (!id) return jsonErr('Missing user id', { status: 400, code: 'MISSING_ID' });
+function isUuidLike(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+}
 
-    // Fetch user email from profiles
-    const { supabase } = guard;
-    const { data: profile, error: profileError } = await supabase
-      .from('profiles')
-      .select('id,email')
-      .eq('id', id)
-      .maybeSingle();
+export async function POST(_req: Request, context: RouteContext) {
+  const { id } = await context.params;
 
-    if (profileError) {
-      return jsonErr(safeErrorMessage(profileError), { status: 500, code: 'DB_ERROR' });
-    }
-    if (!profile?.email) {
-      return jsonErr('User email not found', { status: 404, code: 'NOT_FOUND' });
-    }
-
-    // Use Supabase admin client to generate a password reset link (Supabase v2)
-    const admin = createSupabaseAdminClient();
-    const { data, error } = await admin.auth.admin.generateLink({
-      type: 'recovery',
-      email: profile.email,
-    });
-    if (error) {
-      return jsonErr(safeErrorMessage(error), { status: 500, code: 'INVITE_FAILED' });
-    }
-
-    // Optionally, you can return the link or just success
-    return jsonOk({ id });
-  } catch (e) {
-    return jsonErr(safeErrorMessage(e), { status: 500, code: 'UNKNOWN' });
+  if (!id || !isUuidLike(id)) {
+    return NextResponse.json({ error: 'Invalid user id' }, { status: 400 });
   }
+
+  const supabase = await createSupabaseServerClient();
+
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const { data: profile, error: profileError } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', user.id)
+    .maybeSingle();
+
+  if (profileError || profile?.role !== 'admin') {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
+  const { error } = await supabase.auth.admin.generateLink({
+    type: 'recovery',
+    email: '',
+    newEmail: '',
+    password: undefined,
+  } as never);
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  return NextResponse.json({ ok: true });
 }

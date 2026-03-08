@@ -1,71 +1,64 @@
-import { NextResponse, type NextRequest } from 'next/server';
+import { NextResponse } from 'next/server';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
-export async function POST(req: NextRequest, context: { params: Promise<{ id: string }> }) {
+type RouteContext = {
+  params: Promise<{ id: string }>;
+};
+
+function isUuidLike(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+}
+
+export async function POST(req: Request, context: RouteContext) {
   const { id: leadId } = await context.params;
 
+  if (!leadId || !isUuidLike(leadId)) {
+    return NextResponse.json({ error: 'Invalid lead id' }, { status: 400 });
+  }
+
   const supabase = await createSupabaseServerClient();
-  const { data: userData, error: userErr } = await supabase.auth.getUser();
 
-  if (userErr || !userData?.user) {
-    return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const userId = userData.user.id;
+  const cutoff = new Date(Date.now() - 10 * 60 * 1000).toISOString();
 
-  // Rate limiting (Phase 10.4)
-  const { rateLimit } = await import('@/lib/api/rateLimit');
-  const perLeadKey = `lead_view:${userId}:${leadId}`;
-  const globalKey = `lead_view:${userId}`;
-  const perLead = rateLimit({ key: perLeadKey, limit: 3, windowMs: 60_000 });
-  const global = rateLimit({ key: globalKey, limit: 30, windowMs: 60_000 });
-  if (!perLead.allowed || !global.allowed) {
-    const retryAfterSeconds = Math.max(
-      perLead.retryAfterSeconds ?? 1,
-      global.retryAfterSeconds ?? 1,
-    );
-    const res = NextResponse.json(
-      {
-        ok: false,
-        error: 'Too many view log attempts. Please wait and try again.',
-        code: 'RATE_LIMITED',
-      },
-      { status: 429 },
-    );
-    res.headers.set('Retry-After', retryAfterSeconds.toString());
-    return res;
-  }
-
-  const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
-
-  const { data: lastView, error: lastViewErr } = await supabase
+  const { data: recentView, error: recentViewError } = await supabase
     .from('lead_activity')
-    .select('id, created_at')
+    .select('id')
     .eq('lead_id', leadId)
+    .eq('user_id', user.id)
     .eq('type', 'view')
-    .eq('user_id', userId)
-    .gte('created_at', tenMinutesAgo)
+    .gte('created_at', cutoff)
     .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .limit(1);
 
-  if (!lastViewErr && lastView?.id) {
+  if (recentViewError) {
+    return NextResponse.json({ error: recentViewError.message }, { status: 500 });
+  }
+
+  if (Array.isArray(recentView) && recentView.length > 0) {
     return NextResponse.json({ ok: true, skipped: true });
   }
 
-  const userAgent = req.headers.get('user-agent') ?? null;
-  const referer = req.headers.get('referer') ?? null;
+  const { error: insertError } = await supabase.from('lead_activity').insert([
+    {
+      lead_id: leadId,
+      user_id: user.id,
+      type: 'view',
+      body: null,
+    },
+  ]);
 
-  const { error: insErr } = await supabase.from('lead_activity').insert({
-    lead_id: leadId,
-    type: 'view',
-    body: null,
-    user_id: userId,
-  });
-
-  if (insErr) {
-    return NextResponse.json({ ok: false, error: insErr.message }, { status: 400 });
+  if (insertError) {
+    return NextResponse.json({ error: insertError.message }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true, skipped: false });
+  return NextResponse.json({ ok: true });
 }

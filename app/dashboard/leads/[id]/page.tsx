@@ -3,7 +3,6 @@ import 'server-only';
 import Link from 'next/link';
 import LeadDocumentsClient from '@/components/leads/LeadDocumentsClient';
 import EmailSlideOver from '@/components/leads/EmailSlideOver';
-import { redirect } from 'next/navigation';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { logServerError } from '@/lib/leads/activity.server';
 import AssigneeSelectClient from '@/components/leads/AssigneeSelectClient';
@@ -209,22 +208,7 @@ export default async function LeadDetailPage({ params }: PageProps) {
       }))
     : [];
 
-  const emailLogRows = await fetchEmailLogRows(supabase, leadId);
-  const docNameById: Record<string, string> = {};
-
-  for (const doc of documents) {
-    docNameById[doc.id] = doc.filename;
-  }
-
-  const emailHistoryItems = emailLogRows.map((row) => ({
-    ...row,
-    attachments: Array.isArray(row.document_ids)
-      ? row.document_ids.map((id) => ({
-          id: String(id),
-          filename: docNameById[String(id)] ?? String(id).slice(0, 8),
-        }))
-      : [],
-  }));
+  await fetchEmailLogRows(supabase, leadId);
 
   const cutoff = new Date(Date.now() - 10 * 60 * 1000).toISOString();
   const { data: recentView, error: recentViewError } = await supabase
@@ -284,8 +268,7 @@ export default async function LeadDetailPage({ params }: PageProps) {
     typeof lead.follow_up_date === 'string' ? lead.follow_up_date : null,
   );
 
-  const assignedUserId =
-    typeof (lead as any).assigned_user_id === 'string' ? (lead as any).assigned_user_id : null;
+  const assignedUserId = typeof lead.assigned_user_id === 'string' ? lead.assigned_user_id : null;
 
   const assignedUserLabel =
     (lead as any).assigned_user?.full_name ||
