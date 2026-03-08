@@ -31,6 +31,13 @@ export default async function LeadsPage() {
     return new Date(a.follow_up_date).getTime() - new Date(b.follow_up_date).getTime();
   });
 
+  const canonicalLeads = sortedLeads.map((lead) => ({
+    ...lead,
+    contactPerson: typeof lead.contact_person === 'string' ? lead.contact_person : '',
+    followUpDate: typeof lead.follow_up_date === 'string' ? lead.follow_up_date : null,
+    assignedUserId: typeof lead.assigned_user_id === 'string' ? lead.assigned_user_id : null,
+  }));
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -44,7 +51,7 @@ export default async function LeadsPage() {
       </div>
 
       <LeadsFiltersClient
-        initialLeads={sortedLeads || []}
+        initialLeads={canonicalLeads}
         currentUserId={profile.id}
         currentRole={profile.role}
       />
