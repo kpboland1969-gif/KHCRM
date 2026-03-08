@@ -13,6 +13,11 @@ function formatWhen(value: string | null | undefined) {
   return date.toLocaleString();
 }
 
+function normalizeValue(value: string | null | undefined) {
+  const trimmed = value?.trim();
+  return trimmed && trimmed.length > 0 ? trimmed : null;
+}
+
 export default async function ImportPreviewPage({ params }: PageProps) {
   const profile = await getUserProfile();
 
@@ -69,6 +74,51 @@ export default async function ImportPreviewPage({ params }: PageProps) {
     .order('row_number', { ascending: true })
     .limit(200);
 
+  const previewRows = Array.isArray(rows) ? rows : [];
+
+  const emails = Array.from(
+    new Set(
+      previewRows
+        .map((row) => normalizeValue(row.email)?.toLowerCase() || null)
+        .filter((value): value is string => Boolean(value)),
+    ),
+  );
+
+  const phones = Array.from(
+    new Set(
+      previewRows
+        .map((row) => normalizeValue(row.phone))
+        .filter((value): value is string => Boolean(value)),
+    ),
+  );
+
+  const duplicateEmailSet = new Set<string>();
+  const duplicatePhoneSet = new Set<string>();
+
+  if (emails.length > 0) {
+    const { data: emailMatches } = await supabase.from('leads').select('email').in('email', emails);
+
+    for (const row of emailMatches || []) {
+      const email = normalizeValue(row.email)?.toLowerCase();
+      if (email) duplicateEmailSet.add(email);
+    }
+  }
+
+  if (phones.length > 0) {
+    const { data: phoneMatches } = await supabase.from('leads').select('phone').in('phone', phones);
+
+    for (const row of phoneMatches || []) {
+      const phone = normalizeValue(row.phone);
+      if (phone) duplicatePhoneSet.add(phone);
+    }
+  }
+
+  const duplicatePreviewCount = previewRows.filter((row) => {
+    const email = normalizeValue(row.email)?.toLowerCase() || null;
+    const phone = normalizeValue(row.phone) || null;
+    return (email && duplicateEmailSet.has(email)) || (phone && duplicatePhoneSet.has(phone));
+  }).length;
+
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4">
@@ -85,7 +135,7 @@ export default async function ImportPreviewPage({ params }: PageProps) {
         </Link>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-5">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-6">
         <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
           <div className="text-xs uppercase tracking-wide text-white/50">Status</div>
           <div className="mt-2 text-lg font-semibold">{importRecord.status}</div>
@@ -103,6 +153,10 @@ export default async function ImportPreviewPage({ params }: PageProps) {
           <div className="mt-2 text-lg font-semibold">{importRecord.invalid_row_count}</div>
         </div>
         <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+          <div className="text-xs uppercase tracking-wide text-white/50">Duplicates</div>
+          <div className="mt-2 text-lg font-semibold">{duplicatePreviewCount}</div>
+        </div>
+        <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
           <div className="text-xs uppercase tracking-wide text-white/50">Created</div>
           <div className="mt-2 text-sm font-medium">{formatWhen(importRecord.created_at)}</div>
         </div>
@@ -111,6 +165,14 @@ export default async function ImportPreviewPage({ params }: PageProps) {
       {importRecord.error_message ? (
         <div className="rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-sm text-red-100">
           {importRecord.error_message}
+        </div>
+      ) : null}
+
+      {duplicatePreviewCount > 0 ? (
+        <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4 text-sm text-amber-100">
+          {duplicatePreviewCount} staged row(s) appear to match existing leads by email or phone.
+          The current commit flow will skip duplicates, but this preview now shows them before
+          commit.
         </div>
       ) : null}
 
@@ -141,13 +203,13 @@ export default async function ImportPreviewPage({ params }: PageProps) {
           </div>
         ) : null}
 
-        {!rowsError && (!rows || rows.length === 0) ? (
+        {!rowsError && previewRows.length === 0 ? (
           <div className="rounded-xl border border-white/10 bg-white/[0.02] p-4 text-sm text-white/70">
             No staged rows found for this import.
           </div>
         ) : null}
 
-        {!rowsError && rows && rows.length > 0 ? (
+        {!rowsError && previewRows.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
               <thead>
@@ -162,31 +224,51 @@ export default async function ImportPreviewPage({ params }: PageProps) {
                   <th className="px-3 py-2">Industry</th>
                   <th className="px-3 py-2">Status</th>
                   <th className="px-3 py-2">Validation</th>
+                  <th className="px-3 py-2">Duplicate</th>
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row) => (
-                  <tr key={row.id} className="border-t border-white/5">
-                    <td className="px-3 py-3">{row.row_number}</td>
-                    <td className="px-3 py-3 font-medium">{row.company_name || '—'}</td>
-                    <td className="px-3 py-3">{row.contact_person || '—'}</td>
-                    <td className="px-3 py-3">{row.email || '—'}</td>
-                    <td className="px-3 py-3">{row.phone || '—'}</td>
-                    <td className="px-3 py-3">{row.website || '—'}</td>
-                    <td className="px-3 py-3">
-                      {[row.city, row.state].filter(Boolean).join(', ') || '—'}
-                    </td>
-                    <td className="px-3 py-3">{row.industry || '—'}</td>
-                    <td className="px-3 py-3">{row.status || '—'}</td>
-                    <td className="px-3 py-3">
-                      {row.validation_error ? (
-                        <span className="text-red-300">{row.validation_error}</span>
-                      ) : (
-                        <span className="text-emerald-300">Valid</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                {previewRows.map((row) => {
+                  const email = normalizeValue(row.email)?.toLowerCase() || null;
+                  const phone = normalizeValue(row.phone) || null;
+
+                  const duplicateReasons: string[] = [];
+                  if (email && duplicateEmailSet.has(email)) duplicateReasons.push('Email match');
+                  if (phone && duplicatePhoneSet.has(phone)) duplicateReasons.push('Phone match');
+
+                  const duplicateLabel =
+                    duplicateReasons.length > 0 ? duplicateReasons.join(', ') : null;
+
+                  return (
+                    <tr key={row.id} className="border-t border-white/5">
+                      <td className="px-3 py-3">{row.row_number}</td>
+                      <td className="px-3 py-3 font-medium">{row.company_name || '—'}</td>
+                      <td className="px-3 py-3">{row.contact_person || '—'}</td>
+                      <td className="px-3 py-3">{row.email || '—'}</td>
+                      <td className="px-3 py-3">{row.phone || '—'}</td>
+                      <td className="px-3 py-3">{row.website || '—'}</td>
+                      <td className="px-3 py-3">
+                        {[row.city, row.state].filter(Boolean).join(', ') || '—'}
+                      </td>
+                      <td className="px-3 py-3">{row.industry || '—'}</td>
+                      <td className="px-3 py-3">{row.status || '—'}</td>
+                      <td className="px-3 py-3">
+                        {row.validation_error ? (
+                          <span className="text-red-300">{row.validation_error}</span>
+                        ) : (
+                          <span className="text-emerald-300">Valid</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-3">
+                        {duplicateLabel ? (
+                          <span className="text-amber-300">{duplicateLabel}</span>
+                        ) : (
+                          <span className="text-white/40">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
