@@ -299,8 +299,9 @@ export async function POST(request: NextRequest) {
       {
         file_name: file.name,
         uploaded_by: auth.userId,
-        status: 'uploaded',
+        status: 'awaiting_mapping',
         row_count: parsedRows.length,
+        raw_csv: text,
       },
     ])
     .select('id')
@@ -313,46 +314,8 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const stagedRows = parsedRows.map((rawRow, index) =>
-    buildStagedRow({
-      importId: importRecord.id,
-      rowNumber: index + 1,
-      rawRow,
-    }),
+  return NextResponse.redirect(
+    new URL(`/dashboard/import/${importRecord.id}/map`, request.url),
+    303,
   );
-
-  const chunkSize = 500;
-  for (let i = 0; i < stagedRows.length; i += chunkSize) {
-    const chunk = stagedRows.slice(i, i + chunkSize);
-    const { error: rowInsertError } = await auth.supabase.from('import_rows').insert(chunk);
-
-    if (rowInsertError) {
-      await auth.supabase
-        .from('imports')
-        .update({
-          status: 'failed',
-          error_message: rowInsertError.message,
-        })
-        .eq('id', importRecord.id);
-
-      return NextResponse.json(
-        { error: `Failed to stage rows: ${rowInsertError.message}` },
-        { status: 500 },
-      );
-    }
-  }
-
-  const validCount = stagedRows.filter((row) => !row.validation_error).length;
-  const invalidCount = stagedRows.length - validCount;
-
-  await auth.supabase
-    .from('imports')
-    .update({
-      status: 'preview_ready',
-      valid_row_count: validCount,
-      invalid_row_count: invalidCount,
-    })
-    .eq('id', importRecord.id);
-
-  return NextResponse.redirect(new URL(`/dashboard/import/${importRecord.id}`, request.url), 303);
 }
